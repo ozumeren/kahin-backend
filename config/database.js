@@ -2,15 +2,9 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
+// Coolify'ın iç ağındaki bağlantılar için SSL ayarlarını kaldırdık.
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  protocol: 'postgres',
-  dialectOptions: {
-    ssl: {
-      require: true,
-      rejectUnauthorized: false // Coolify'daki veritabanları için bu ayar gerekebilir
-    }
-  },
   logging: false
 });
 
