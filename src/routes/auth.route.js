@@ -2,13 +2,10 @@
 const express = require('express');
 const router = express.Router();
 
-// Henüz controller'ı yazmadığımız için bu satırı şimdilik yorum olarak bırakıyoruz.
-// const authController = require('../controllers/auth.controller');
-// router.post('/register', authController.register);
+// Artık gerçek controller'ı kullanıyoruz
+const authController = require('../controllers/auth.controller');
 
-// Test için geçici bir rota
-router.post('/register', (req, res) => {
-  res.status(201).json({ message: "Register endpoint'ine ulaşıldı!", body: req.body });
-});
+// POST /api/v1/auth/register isteği geldiğinde authController'daki register fonksiyonunu çalıştır
+router.post('/register', authController.register);
 
 module.exports = router;
