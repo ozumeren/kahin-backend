@@ -5,7 +5,8 @@ const express = require('express');
 const cors = require('cors');
 const sequelize = require('../config/database');
 const User = require('./models/user.model');
-const authRoutes = require('./routes/auth.route'); // <-- YENİ: Rota dosyasını import et
+const authRoutes = require('./routes/auth.route');
+const userRoutes = require('./routes/user.route'); 
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -14,7 +15,8 @@ app.use(cors());
 app.use(express.json());
 
 // Ana API rotalarını tanımla
-app.use('/api/v1/auth', authRoutes); // <-- YENİ: /api/v1/auth ile başlayan tüm istekleri auth.route.js'e yönlendir
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/users', userRoutes);
 
 app.get('/', (req, res) => {
   res.send('Kahin Projesi Backend Sunucusu Çalışıyor!');
