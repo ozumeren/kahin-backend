@@ -3,6 +3,10 @@ const authService = require('../services/auth.service');
 
 class AuthController {
   async register(req, res) {
+    // --- YENİ HATA AYIKLAMA KODU ---
+    console.log('Gelen istek body:', req.body);
+    // ---------------------------------
+
     try {
       const newUser = await authService.register(req.body);
       res.status(201).json({
@@ -10,7 +14,6 @@ class AuthController {
         user: newUser
       });
     } catch (error) {
-      // Servisten gelen hatayı yakala ve kullanıcıya uygun bir mesaj göster
       res.status(400).json({
         message: 'Kayıt sırasında bir hata oluştu.',
         error: error.message
