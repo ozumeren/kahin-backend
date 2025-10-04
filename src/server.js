@@ -1,30 +1,34 @@
 // src/server.js
+console.log('--- SERVER.JS DOSYASI BAŞLADI ---');
+
 const express = require('express');
 const cors = require('cors');
 const sequelize = require('../config/database');
+const User = require('./models/user.model'); // <-- User modelini import et
 
 const app = express();
-const PORT = process.env.PORT || 8000; // Coolify genellikle 8000 portunu verir
+const PORT = process.env.PORT || 8000;
 
-// Middlewares
-app.use(cors()); // CORS'u etkinleştir
-app.use(express.json()); // Gelen JSON verilerini işle
+app.use(cors());
+app.use(express.json());
 
-// Ana Rota
 app.get('/', (req, res) => {
   res.send('Kahin Projesi Backend Sunucusu Çalışıyor!');
 });
 
-// Veritabanı bağlantısını test et ve sunucuyu başlat
 async function startServer() {
   try {
-    await sequelize.authenticate();
-    console.log('Veritabanı bağlantısı başarıyla kuruldu.');
+    // { force: true } seçeneği her başlangıçta tabloyu silip yeniden oluşturur.
+    // Geliştirme aşamasında kullanışlıdır, production'da kaldırılmalıdır.
+    // Sadece { alter: true } kullanmak daha güvenlidir.
+    await sequelize.sync({ alter: true });
+    console.log('Veritabanı senkronizasyonu başarılı.');
+
     app.listen(PORT, () => {
       console.log(`Sunucu ${PORT} portunda başlatıldı.`);
     });
   } catch (error) {
-    console.error('Veritabanına bağlanılamadı:', error);
+    console.error('Sunucu başlatılırken hata oluştu:', error);
   }
 }
 
