@@ -7,11 +7,12 @@ const sequelize = require('../config/database');
 
 // Modelleri import et
 const User = require('./models/user.model');
-const Market = require('./models/market.model'); // <-- YENİ
+const Market = require('./models/market.model'); 
 
 // Rotaları import et
 const authRoutes = require('./routes/auth.route');
 const userRoutes = require('./routes/user.route');
+const marketRoutes = require('./routes/market.route');
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -22,6 +23,7 @@ app.use(express.json());
 // API Rotaları
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/markets', marketRoutes);
 
 app.get('/', (req, res) => {
   res.send('Kahin Projesi Backend Sunucusu Çalışıyor!');
