@@ -3,11 +3,7 @@ console.log('--- SERVER.JS DOSYASI BAŞLADI ---');
 
 const express = require('express');
 const cors = require('cors');
-const sequelize = require('../config/database');
-
-// Modelleri import et
-const User = require('./models/user.model');
-const Market = require('./models/market.model');
+const db = require('./models'); // <-- YENİ: Tüm modelleri ve sequelize'ı tek yerden import et
 
 // Rotaları import et
 const authRoutes = require('./routes/auth.route');
@@ -15,18 +11,16 @@ const userRoutes = require('./routes/user.route');
 const marketRoutes = require('./routes/market.route');
 
 const app = express();
-const PORT = process.env.PORT || 3000; // Loglarda 3000 gördüğümüz için bunu 3000 yapalım
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 
-// --- YENİ LOGGER MIDDLEWARE'İ ---
-// Bu kod, API rotalarından ÖNCE gelmelidir.
+// Logger Middleware
 app.use((req, res, next) => {
   console.log(`Gelen İstek: ${req.method} ${req.originalUrl} - Host: ${req.headers.host}`);
-  next(); // İsteğin bir sonraki adıma (API rotalarına) devam etmesini sağlar
+  next();
 });
-// ---------------------------------
 
 // API Rotaları
 app.use('/api/v1/auth', authRoutes);
@@ -39,8 +33,10 @@ app.get('/', (req, res) => {
 
 async function startServer() {
   try {
-    await sequelize.sync({ alter: true });
+    // Tüm modelleri veritabanı ile senkronize et
+    await db.sequelize.sync({ alter: true });
     console.log('Veritabanı senkronizasyonu başarılı.');
+
     app.listen(PORT, () => {
       console.log(`Sunucu ${PORT} portunda başlatıldı.`);
     });
