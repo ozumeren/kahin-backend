@@ -24,6 +24,14 @@ class MarketController {
       res.status(500).json({ message: 'Pazar getirilirken bir hata oluştu.', error: error.message });
     }
   }
+  async createMarket(req, res) {
+    try {
+      const newMarket = await marketService.create(req.body);
+      res.status(201).json(newMarket);
+    } catch (error) {
+      res.status(400).json({ message: 'Pazar oluşturulurken bir hata oluştu.', error: error.message });
+    }
+  }
 }
 
 module.exports = new MarketController();

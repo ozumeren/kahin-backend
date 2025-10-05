@@ -9,4 +9,6 @@ router.get('/', marketController.getMarkets);
 // GET /api/v1/markets/:id -> Tek bir pazarın detayını getirir
 router.get('/:id', marketController.getMarketById);
 
+router.post('/', marketController.createMarket);
+
 module.exports = router;

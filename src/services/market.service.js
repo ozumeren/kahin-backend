@@ -17,6 +17,21 @@ class MarketService {
     }
     return market;
   }
+  async create(marketData) {
+    const { title, description, closing_date } = marketData;
+
+    if (!title || !closing_date) {
+      throw new Error('Başlık ve kapanış tarihi zorunludur.');
+    }
+
+    const newMarket = await Market.create({
+      title,
+      description,
+      closing_date
+    });
+
+    return newMarket;
+  }
 }
 
 module.exports = new MarketService();
