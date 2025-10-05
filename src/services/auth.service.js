@@ -5,18 +5,29 @@ const jwt = require('jsonwebtoken'); // <-- YENİ: JWT kütüphanesini ekle
 
 class AuthService {
   async register(userData) {
-    // ... (mevcut register kodun burada)
+    console.log('1. Register servisi başladı.');
     const { username, email, password } = userData;
+
+    console.log(`2. Kullanıcı aranıyor: ${email}`);
     const existingUser = await User.findOne({ where: { email } });
+    console.log('3. Kullanıcı arama tamamlandı.');
+
     if (existingUser) {
       throw new Error('Bu e-posta adresi zaten kullanılıyor.');
     }
+
+    console.log('4. Şifre hashleniyor.');
     const hashedPassword = await bcrypt.hash(password, 10);
+    console.log('5. Şifre hashlendi.');
+
+    console.log('6. Yeni kullanıcı oluşturuluyor.');
     const newUser = await User.create({
       username,
       email,
       password: hashedPassword
     });
+    console.log('7. Yeni kullanıcı oluşturuldu.');
+
     newUser.password = undefined;
     return newUser;
   }

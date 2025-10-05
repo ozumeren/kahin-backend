@@ -1,11 +1,13 @@
 // config/database.js
 const { Sequelize } = require('sequelize');
-require('dotenv').config();
 
-// Coolify'ın iç ağındaki bağlantılar için SSL ayarlarını kaldırdık.
+// Coolify ortam değişkenlerini otomatik olarak verdiği için dotenv'a gerek yok.
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
   dialect: 'postgres',
-  logging: false
+  // --- YENİ HATA AYIKLAMA KODU ---
+  // Bu, her SQL sorgusunu konsola yazdırır.
+  logging: console.log
+  // ---------------------------------
 });
 
 module.exports = sequelize;
