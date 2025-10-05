@@ -1,49 +1,39 @@
 // src/server.js
 console.log('--- SERVER.JS DOSYASI BAŞLADI ---');
-
 const express = require('express');
-const cors = require('cors');
-const db = require('./models'); // <-- YENİ: Tüm modelleri ve sequelize'ı tek yerden import et
-
-// Rotaları import et
-const authRoutes = require('./routes/auth.route');
-const userRoutes = require('./routes/user.route');
-const marketRoutes = require('./routes/market.route');
-const shareRoutes = require('./routes/share.route');
+const { Pool } = require('pg'); // Sequelize yerine doğrudan 'pg' kullanıyoruz
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json());
-
-// Logger Middleware
-app.use((req, res, next) => {
-  console.log(`Gelen İstek: ${req.method} ${req.originalUrl} - Host: ${req.headers.host}`);
-  next();
-});
-
-// API Rotaları
-app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/users', userRoutes);
-app.use('/api/v1/markets', marketRoutes);
-app.use('/api/v1/shares', shareRoutes);
-
 app.get('/', (req, res) => {
-  res.send('Kahin Projesi Backend Sunucusu Çalışıyor!');
+  res.send('Kahin Projesi Backend Sunucusu Test Modunda!');
 });
 
 async function startServer() {
   try {
-    // Tüm modelleri veritabanı ile senkronize et
-    await db.sequelize.sync({ alter: true });
-    console.log('Veritabanı senkronizasyonu başarılı.');
+    console.log('Veritabanı bağlantısı PG Pool ile deneniyor...');
+    
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      // Coolify'ın iç ağında SSL genellikle gerekmez
+      // ssl: { rejectUnauthorized: false } 
+    });
+
+    const client = await pool.connect();
+    console.log('PG Pool: Veritabanına başarıyla bağlanıldı.');
+
+    console.log('PG Pool: Test sorgusu gönderiliyor (SELECT 1+1)...');
+    const result = await client.query('SELECT 1+1 AS result;');
+    console.log('PG Pool: Test sorgusu başarılı! Sonuç:', result.rows[0]);
+    
+    client.release(); // Bağlantıyı havuza geri bırak
 
     app.listen(PORT, () => {
       console.log(`Sunucu ${PORT} portunda başlatıldı.`);
     });
   } catch (error) {
-    console.error('Sunucu başlatılırken hata oluştu:', error);
+    console.error('PG Pool: Bağlantı veya sorgu sırasında KRİTİK HATA:', error);
   }
 }
 
