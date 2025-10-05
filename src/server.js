@@ -7,7 +7,7 @@ const sequelize = require('../config/database');
 
 // Modelleri import et
 const User = require('./models/user.model');
-const Market = require('./models/market.model'); 
+const Market = require('./models/market.model');
 
 // Rotaları import et
 const authRoutes = require('./routes/auth.route');
@@ -15,10 +15,18 @@ const userRoutes = require('./routes/user.route');
 const marketRoutes = require('./routes/market.route');
 
 const app = express();
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || 3000; // Loglarda 3000 gördüğümüz için bunu 3000 yapalım
 
 app.use(cors());
 app.use(express.json());
+
+// --- YENİ LOGGER MIDDLEWARE'İ ---
+// Bu kod, API rotalarından ÖNCE gelmelidir.
+app.use((req, res, next) => {
+  console.log(`Gelen İstek: ${req.method} ${req.originalUrl} - Host: ${req.headers.host}`);
+  next(); // İsteğin bir sonraki adıma (API rotalarına) devam etmesini sağlar
+});
+// ---------------------------------
 
 // API Rotaları
 app.use('/api/v1/auth', authRoutes);
