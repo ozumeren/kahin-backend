@@ -9,6 +9,7 @@ const db = require('./models'); // <-- YENİ: Tüm modelleri ve sequelize'ı tek
 const authRoutes = require('./routes/auth.route');
 const userRoutes = require('./routes/user.route');
 const marketRoutes = require('./routes/market.route');
+const shareRoutes = require('./routes/share.route');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,6 +27,7 @@ app.use((req, res, next) => {
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/markets', marketRoutes);
+app.use('/api/v1/shares', shareRoutes);
 
 app.get('/', (req, res) => {
   res.send('Kahin Projesi Backend Sunucusu Çalışıyor!');
