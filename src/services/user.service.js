@@ -11,7 +11,12 @@ class UserService {
       include: [
         {
           model: Share,
-          // Her hissenin ait olduğu pazar bilgisini de getir
+          where: {
+            quantity: {
+              [Op.gt]: 0 
+            }
+          },
+          required: false, // Bu, hiç hissesi olmayan kullanıcılar için de sonucun dönmesini sağlar
           include: [
             {
               model: Market,
