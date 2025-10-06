@@ -6,7 +6,7 @@ const { Order, User, Market, Share, sequelize } = db;
 
 class OrderService {
   async createOrder(orderData) {
-    const { userId, marketId, type, outcome, quantity, price } = orderData;
+    let { userId, marketId, type, outcome, quantity, price } = orderData;
 
     const t = await sequelize.transaction();
 
