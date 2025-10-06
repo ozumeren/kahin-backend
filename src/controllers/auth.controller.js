@@ -19,6 +19,22 @@ class AuthController {
         error: error.message
       });
     }
+    
+  }
+  async login(req, res) {
+    try {
+      const { email, password } = req.body;
+      const { accessToken } = await authService.login(email, password);
+      res.status(200).json({
+        message: 'Giriş başarılı!',
+        accessToken
+      });
+    } catch (error) {
+      res.status(401).json({
+        message: 'Giriş başarısız.',
+        error: error.message
+      });
+    }
   }
 }
 
