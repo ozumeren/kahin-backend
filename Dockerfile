@@ -1,23 +1,18 @@
-# 1. Adım: Node.js'in kurulu olduğu bir başlangıç ortamı seç
+# 1. Start with the full Node.js environment
 FROM node:18
 
-# --- YENİ EKLENEN KOD ---
-# 'pg-native' gibi paketlerin derlenmesi için gerekli olan araçları kur.
-RUN apk add --no-cache --virtual .gyp python3 make g++
-# -------------------------
-
-# 2. Adım: Uygulama dosyalarının yaşayacağı bir klasör oluştur
+# 2. Create a directory for the app files
 WORKDIR /app
 
-# 3. Adım: package.json dosyasını kopyala ve bağımlılıkları kur
+# 3. Copy package.json and install dependencies
 COPY package*.json ./
 RUN npm install
 
-# 4. Adım: Projenin geri kalan tüm dosyalarını kopyala
+# 4. Copy the rest of your project files
 COPY . .
 
-# 5. Adım: Uygulamanın çalışacağı portu belirt
+# 5. Tell Docker which port the app will run on
 EXPOSE 3000
 
-# 6. Adım: Uygulamayı başlat
+# 6. The command to start the app
 CMD [ "npm", "run", "start" ]
