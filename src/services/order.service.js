@@ -37,16 +37,55 @@ class OrderService {
         user.balance -= totalCost;
         await user.save({ transaction: t });
 
-        // TODO: Eşleştirme mantığı buraya eklenecek.
-        // Şimdilik sadece yeni emri oluşturuyoruz.
-        newOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' }, { transaction: t });
+        const matchingSellOrder = await Order.findOne({
+          where: {
+            marketId,
+            type: 'SELL',
+            outcome,
+            status: 'OPEN',
+            price: { [Op.lte]: price }, // Satış fiyatı, alış fiyatına eşit veya daha ucuz olmalı
+            quantity: quantity, // Şimdilik sadece tam eşleşmeleri arıyoruz
+            userId: { [Op.ne]: userId } // Kişi kendi emrini karşılayamaz
+          },
+          order: [['price', 'ASC']], // En ucuz satıcıyı önce bul
+          lock: t.LOCK.UPDATE,
+          transaction: t
+        });
+
+        if (matchingSellOrder) {
+          // 3. EŞLEŞME BULUNDU! Ticareti gerçekleştir.
+          console.log('Eşleşme bulundu!');
+          const seller = await User.findByPk(matchingSellOrder.userId, { lock: t.LOCK.UPDATE, transaction: t });
+
+          // Satıcının bakiyesini artır
+          seller.balance += totalCost;
+          await seller.save({ transaction: t });
+
+          // Alıcının hisselerini artır veya oluştur
+          const buyerShare = await Share.findOne({ where: { userId: buyer.id, marketId, outcome }, transaction: t }) || await Share.create({ userId: buyer.id, marketId, outcome, quantity: 0 }, { transaction: t });
+          buyerShare.quantity += quantity;
+          await buyerShare.save({ transaction: t });
+
+          // Satıcının hisselerini azalt veya oluştur (bu adım satış emri verildiğinde yapılacak)
+          
+          // Emirlerin durumunu 'FILLED' (tamamlandı) olarak güncelle
+          matchingSellOrder.status = 'FILLED';
+          await matchingSellOrder.save({ transaction: t });
+
+          // Yeni alış emrini de 'FILLED' olarak oluştur
+          newOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'FILLED' }, { transaction: t });
+          
+        } else {
+          // 4. EŞLEŞME BULUNAMADI. Emri deftere yaz.
+          console.log('Eşleşme bulunamadı, emir deftere yazılıyor.');
+          newOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' }, { transaction: t });
+        }
 
       } else if (type === 'SELL') {
-        // TODO: Satış emri mantığı buraya eklenecek.
-        // Şimdilik sadece yeni emri oluşturuyoruz.
-        newOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' }, { transaction: t });
+        // TODO: Satış emri ve eşleştirme mantığı buraya eklenecek.
+        throw new Error('Satış emirleri henüz desteklenmiyor.');
       } else {
-        throw new Error('Geçersiz emir tipi. Sadece "BUY" veya "SELL" olabilir.');
+        throw new Error('Geçersiz emir tipi.');
       }
 
       // Her şey yolunda gittiyse, transaction'ı onayla.
