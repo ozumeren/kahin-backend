@@ -2,6 +2,16 @@
 const { Op } = require('sequelize');
 const db = require('../models');
 const { Order, User, Market, Share, sequelize } = db;
+const redisClient = require('../../config/redis');
+
+// Redis anahtar isimlerini oluşturan yardımcı fonksiyon
+const getMarketKeys = (marketId, outcome) => {
+  const outcomeString = outcome ? 'yes' : 'no';
+  return {
+    bids: `market:${marketId}:${outcomeString}:bids`, // Alış emirleri (Sorted Set)
+    asks: `market:${marketId}:${outcomeString}:asks`, // Satış emirleri (Sorted Set)
+  };
+};
 
 class OrderService {
   async createOrder(orderData) {
@@ -11,137 +21,71 @@ class OrderService {
     const t = await sequelize.transaction();
 
     try {
-      if (!marketId || !type || outcome === null || !quantity || !price) {
-        throw new Error('Eksik bilgi: marketId, type, outcome, quantity ve price zorunludur.');
-      }
-      if (price <= 0 || price >= 1) {
-        throw new Error('Fiyat 0 ile 1 arasında olmalıdır.');
-      }
+      // --- Temel Kontroller ---
       const market = await Market.findByPk(marketId, { transaction: t });
       if (!market || market.status !== 'open') throw new Error('Pazar bulunamadı veya işlem için açık değil.');
       
+      const user = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
+      if (!user) throw new Error('Kullanıcı bulunamadı.');
+      
+      const { bids: bidsKey, asks: asksKey } = getMarketKeys(marketId, outcome);
+
       if (type === 'BUY') {
-        const buyer = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
         const totalCost = quantity * price;
-        if (buyer.balance < totalCost) throw new Error('Yetersiz bakiye.');
+        if (user.balance < totalCost) throw new Error('Yetersiz bakiye.');
         
-        buyer.balance -= totalCost;
-        
-        const matchingSellOrders = await Order.findAll({
-            where: { marketId, type: 'SELL', outcome, status: 'OPEN', price: { [Op.lte]: price }, userId: { [Op.ne]: userId } },
-            order: [['price', 'ASC'], ['createdAt', 'ASC']],
-            lock: t.LOCK.UPDATE,
-            transaction: t
-        });
+        user.balance -= totalCost;
+        await user.save({ transaction: t });
 
+        // --- YENİ EŞLEŞTİRME MANTIĞI (REDIS ÜZERİNDE) ---
+        // Uygun satış emirlerini Redis'ten bul (en ucuzdan pahalıya doğru)
+        const matchingSellOrders = await redisClient.zRangeWithScores(asksKey, 0, -1);
+        
         for (const sellOrder of matchingSellOrders) {
-            if (quantity === 0) break;
-            const tradeQuantity = Math.min(quantity, sellOrder.quantity);
-            const tradePrice = sellOrder.price;
-            const tradeTotal = tradeQuantity * tradePrice;
-
-            const priceDifference = price - tradePrice;
-            if (priceDifference > 0) {
-                const newBuyerBalance = parseFloat(buyer.balance) + (tradeQuantity * priceDifference);
-                buyer.balance = parseFloat(newBuyerBalance.toFixed(2));
-            }
-
-            const seller = await User.findByPk(sellOrder.userId, { lock: t.LOCK.UPDATE, transaction: t });
-            const newSellerBalance = parseFloat(seller.balance) + tradeTotal;
-            seller.balance = parseFloat(newSellerBalance.toFixed(2));
-            await seller.save({ transaction: t });
-
-            const buyerShare = await Share.findOne({ where: { userId: buyer.id, marketId, outcome }, transaction: t }) || await Share.create({ userId: buyer.id, marketId, outcome, quantity: 0 }, { transaction: t });
-            buyerShare.quantity += tradeQuantity;
-            await buyerShare.save({ transaction: t });
+          if (quantity === 0) break;
+          const sellPrice = sellOrder.score;
+          const [sellerOrderId, sellerOrderQuantityStr] = sellOrder.value.split(':');
+          const sellerOrderQuantity = parseInt(sellerOrderQuantityStr);
+          
+          if (sellPrice <= price) {
+            const tradeQuantity = Math.min(quantity, sellerOrderQuantity);
             
-            // --- DÜZELTME VE YENİ KOD (Satıcının hissesini düşür ve 0 ise sil) ---
-            const sellerShare = await Share.findOne({ where: { userId: seller.id, marketId, outcome }, transaction: t });
-            if (sellerShare) {
-                sellerShare.quantity -= tradeQuantity;
-                if (sellerShare.quantity === 0) {
-                    await sellerShare.destroy({ transaction: t }); // Miktar 0 ise kaydı sil
-                } else {
-                    await sellerShare.save({ transaction: t });
-                }
-            }
-            // -----------------------------------------------------------------
+            // --- TİCARETİ GERÇEKLEŞTİR ---
+            await this.executeTrade(t, userId, sellerOrderId, marketId, outcome, tradeQuantity, sellPrice);
             
-            quantity -= tradeQuantity;
-            sellOrder.quantity -= tradeQuantity;
-            if (sellOrder.quantity === 0) sellOrder.status = 'FILLED';
-            await sellOrder.save({ transaction: t });
+            quantity -= tradeQuantity; // Alıcının kalan miktarını güncelle
+
+            // Eşleşen emri Redis'ten ve PostgreSQL'den güncelle/sil
+            const remainingSellerQty = sellerOrderQuantity - tradeQuantity;
+            if (remainingSellerQty === 0) {
+              await redisClient.zRem(asksKey, sellOrder.value);
+              await Order.update({ status: 'FILLED' }, { where: { id: sellerOrderId }, transaction: t });
+            } else {
+              const newSellerValue = `${sellerOrderId}:${remainingSellerQty}`;
+              await redisClient.zRem(asksKey, sellOrder.value);
+              await redisClient.zAdd(asksKey, { score: sellPrice, value: newSellerValue });
+              await Order.update({ quantity: remainingSellerQty }, { where: { id: sellerOrderId }, transaction: t });
+            }
+          }
         }
-        await buyer.save({ transaction: t });
-
       } else if (type === 'SELL') {
-        const seller = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
-        const sellerShare = await Share.findOne({ where: { userId, marketId, outcome }, transaction: t });
-
-        if (!sellerShare || sellerShare.quantity < quantity) {
-          throw new Error('Satmak için yeterli hisseniz yok.');
-        }
-        
-        const matchingBuyOrders = await Order.findAll({
-            where: { marketId, type: 'BUY', outcome, status: 'OPEN', price: { [Op.gte]: price }, userId: { [Op.ne]: userId } },
-            order: [['price', 'DESC'], ['createdAt', 'ASC']],
-            lock: t.LOCK.UPDATE,
-            transaction: t
-        });
-
-        for (const buyOrder of matchingBuyOrders) {
-            if (quantity === 0) break;
-            const tradeQuantity = Math.min(quantity, buyOrder.quantity);
-            const tradePrice = buyOrder.price;
-            const tradeTotal = tradeQuantity * tradePrice;
-            
-            const newSellerBalance = parseFloat(seller.balance) + tradeTotal;
-            seller.balance = parseFloat(newSellerBalance.toFixed(2));
-
-            const buyer = await User.findByPk(buyOrder.userId, { lock: t.LOCK.UPDATE, transaction: t });
-            const buyerShare = await Share.findOne({ where: { userId: buyer.id, marketId, outcome }, transaction: t }) || await Share.create({ userId: buyer.id, marketId, outcome, quantity: 0 }, { transaction: t });
-            buyerShare.quantity += tradeQuantity;
-            await buyerShare.save({ transaction: t });
-            
-            // --- DÜZELTME VE YENİ KOD (Satıcının hissesini düşür) ---
-            sellerShare.quantity -= tradeQuantity;
-            // ---------------------------------------------------------
-            
-            const priceDifference = tradePrice - price;
-            if(priceDifference > 0) {
-                const newBuyerBalance = parseFloat(buyer.balance) + (tradeQuantity * priceDifference);
-                buyer.balance = parseFloat(newBuyerBalance.toFixed(2));
-                await buyer.save({transaction: t});
-            }
-
-            quantity -= tradeQuantity;
-            buyOrder.quantity -= tradeQuantity;
-            if (buyOrder.quantity === 0) buyOrder.status = 'FILLED';
-            await buyOrder.save({ transaction: t });
-        }
-
-        // --- YENİ KOD (Satıcının hisse kaydını döngüden sonra güncelle/sil) ---
-        if (sellerShare.quantity === 0) {
-            await sellerShare.destroy({ transaction: t });
-        } else {
-            await sellerShare.save({ transaction: t });
-        }
-        // ---------------------------------------------------------------------
-        await seller.save({ transaction: t });
+        // ... (SELL mantığı şimdilik eski haliyle kalıyor, bir sonraki adımda bunu da Redis'e taşıyacağız)
+        throw new Error("Satış emirleri şu anki güncelleme ile geçici olarak devre dışı.");
       }
-      
-      await t.commit(); 
 
-      if (quantity === 0) {
-        return { message: "Emir tamamen eşleşti ve tamamlandı." };
-      } 
-      
-      const remainingOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' });
-
-      if (quantity < initialQuantity) {
-        return { message: "Emriniz kısmen eşleşti, kalanı deftere yazıldı.", order: remainingOrder };
+      // Eğer emir tam eşleşmediyse, kalanı deftere yaz
+      if (quantity > 0) {
+        const newOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' }, { transaction: t });
+        // Yeni emri Redis'e de ekle
+        const redisKey = type === 'BUY' ? bidsKey : asksKey;
+        await redisClient.zAdd(redisKey, { score: price, value: `${newOrder.id}:${quantity}` });
+        
+        await t.commit();
+        const message = quantity < initialQuantity ? "Emriniz kısmen eşleşti, kalanı deftere yazıldı." : "Eşleşme bulunamadı, emriniz deftere yazıldı.";
+        return { message, order: newOrder };
       } else {
-        return { message: "Eşleşme bulunamadı, emriniz deftere yazıldı.", order: remainingOrder };
+        await t.commit();
+        return { message: "Emir tamamen eşleşti ve tamamlandı." };
       }
 
     } catch (error) {
@@ -149,5 +93,32 @@ class OrderService {
       throw error;
     }
   }
+
+  // Ticaret gerçekleştirme fonksiyonu (ufak güncellemelerle)
+  async executeTrade(t, buyerId, sellerOrderId, marketId, outcome, quantity, price) {
+      const sellerOrder = await Order.findByPk(sellerOrderId, { transaction: t });
+      const buyer = await User.findByPk(buyerId, { lock: t.LOCK.UPDATE, transaction: t });
+      const seller = await User.findByPk(sellerOrder.userId, { lock: t.LOCK.UPDATE, transaction: t });
+
+      const tradeTotal = quantity * price;
+
+      seller.balance = parseFloat(seller.balance) + tradeTotal;
+      await seller.save({ transaction: t });
+
+      const buyerShare = await Share.findOne({ where: { userId: buyerId, marketId, outcome }, transaction: t }) || await Share.create({ userId: buyerId, marketId, outcome, quantity: 0 }, { transaction: t });
+      buyerShare.quantity += quantity;
+      await buyerShare.save({ transaction: t });
+      
+      const sellerShare = await Share.findOne({ where: { userId: seller.id, marketId, outcome }, transaction: t });
+      if(sellerShare) {
+        sellerShare.quantity -= quantity;
+        if (sellerShare.quantity === 0) {
+            await sellerShare.destroy({ transaction: t });
+        } else {
+            await sellerShare.save({ transaction: t });
+        }
+      }
+  }
 }
+
 module.exports = new OrderService();
