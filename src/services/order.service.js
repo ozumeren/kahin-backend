@@ -42,4 +42,24 @@ class OrderService {
         newOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' }, { transaction: t });
 
       } else if (type === 'SELL') {
-        // TODO: Satış emri mantığı bur
+        // TODO: Satış emri mantığı buraya eklenecek.
+        // Şimdilik sadece yeni emri oluşturuyoruz.
+        newOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' }, { transaction: t });
+      } else {
+        throw new Error('Geçersiz emir tipi. Sadece "BUY" veya "SELL" olabilir.');
+      }
+
+      // Her şey yolunda gittiyse, transaction'ı onayla.
+      await t.commit();
+
+      return newOrder;
+
+    } catch (error) {
+      // Herhangi bir adımda hata olursa, tüm değişiklikleri geri al.
+      await t.rollback();
+      throw error;
+    }
+  }
+}
+
+module.exports = new OrderService();
