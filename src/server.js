@@ -12,6 +12,7 @@ const marketRoutes = require('./routes/market.route');
 const shareRoutes = require('./routes/share.route');
 const orderRoutes = require('./routes/order.route');
 const adminRoutes = require('./routes/admin.route');
+const devRoutes = require('./routes/dev.route');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -32,6 +33,11 @@ app.use('/api/v1/markets', marketRoutes);
 app.use('/api/v1/shares', shareRoutes);
 app.use('/api/v1/orders', orderRoutes);
 app.use('/api/v1/admin', adminRoutes);
+
+// Sadece geliştirme ortamında aktif olacak bir rota
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api/v1/dev', devRoutes); // <-- YENİ
+}
 
 app.get('/', (req, res) => {
   res.send('Kahin Projesi Backend Sunucusu Çalışıyor!');
