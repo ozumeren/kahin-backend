@@ -3,31 +3,23 @@ const authService = require('../services/auth.service');
 
 class AuthController {
   async register(req, res) {
-    // ... (mevcut register kodun burada)
+    // Gelen isteğin body'sini loglayarak verinin ulaştığından emin olalım
+    console.log('Register Controller\'a gelen body:', req.body);
     try {
-      // ...
-    } catch (error) {
-      // ...
-    }
-  }
-
-  // --- YENİ LOGIN FONKSİYONU ---
-  async login(req, res) {
-    try {
-      const { accessToken } = await authService.login(req.body);
-      res.status(200).json({
-        message: 'Giriş başarılı!',
-        accessToken
+      const newUser = await authService.register(req.body);
+      res.status(201).json({
+        message: 'Kullanıcı başarıyla oluşturuldu!',
+        user: newUser
       });
     } catch (error) {
-      // Servisten gelen hatayı yakala
-      res.status(401).json({ // 401 Unauthorized (Yetkisiz) status kodu daha uygun
-        message: 'Giriş başarısız.',
+      // Olası hataları loglayalım
+      console.error('Kayıt sırasında hata oluştu:', error.message);
+      res.status(400).json({
+        message: 'Kayıt sırasında bir hata oluştu.',
         error: error.message
       });
     }
   }
-  // -----------------------------
 }
 
 module.exports = new AuthController();
