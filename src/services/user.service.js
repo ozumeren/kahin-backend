@@ -1,5 +1,6 @@
 // src/services/user.service.js
 const { User, Share, Market } = require('../models');
+const { Op } = require('sequelize');
 
 class UserService {
   // Bir kullanıcıyı, sahip olduğu hisseler ve o hisselerin ait olduğu pazarlarla birlikte getirir
@@ -11,11 +12,6 @@ class UserService {
       include: [
         {
           model: Share,
-          where: {
-            quantity: {
-              [Op.gt]: 0 
-            }
-          },
           required: false, // Bu, hiç hissesi olmayan kullanıcılar için de sonucun dönmesini sağlar
           include: [
             {
