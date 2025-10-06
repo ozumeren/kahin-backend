@@ -1,10 +1,13 @@
 // src/services/order.service.js
+// ... (tüm importlar aynı)
 const { Op } = require('sequelize');
 const db = require('../models');
 const { Order, User, Market, Share, sequelize } = db;
 
+
 class OrderService {
   async createOrder(orderData) {
+    // ... (tüm kod aynı, sadece bakiye hesaplamaları değişecek)
     let { userId, marketId, type, outcome, quantity, price } = orderData;
 
     const t = await sequelize.transaction();
@@ -25,64 +28,55 @@ class OrderService {
         if (buyer.balance < totalCost) throw new Error('Yetersiz bakiye.');
         
         buyer.balance -= totalCost;
-        // Not: Bakiyeyi döngü sonunda bir kez kaydediyoruz.
         
         const matchingSellOrders = await Order.findAll({
-          where: {
-            marketId, type: 'SELL', outcome, status: 'OPEN',
-            price: { [Op.lte]: price },
-            userId: { [Op.ne]: userId }
-          },
-          order: [['price', 'ASC'], ['createdAt', 'ASC']],
-          lock: t.LOCK.UPDATE,
-          transaction: t
+            where: { marketId, type: 'SELL', outcome, status: 'OPEN', price: { [Op.lte]: price }, userId: { [Op.ne]: userId } },
+            order: [['price', 'ASC'], ['createdAt', 'ASC']],
+            lock: t.LOCK.UPDATE,
+            transaction: t
         });
 
         for (const sellOrder of matchingSellOrders) {
-          if (quantity === 0) break;
-          const tradeQuantity = Math.min(quantity, sellOrder.quantity);
-          const tradePrice = sellOrder.price;
-          const tradeTotal = tradeQuantity * tradePrice;
+            if (quantity === 0) break;
+            const tradeQuantity = Math.min(quantity, sellOrder.quantity);
+            const tradePrice = sellOrder.price;
+            const tradeTotal = tradeQuantity * tradePrice;
+            const priceDifference = price - tradePrice;
 
-          const priceDifference = price - tradePrice;
-          if (priceDifference > 0) {
-            buyer.balance += tradeQuantity * priceDifference;
-          }
+            if (priceDifference > 0) {
+                // DÜZELTME: Yuvarlama eklendi
+                const newBuyerBalance = parseFloat(buyer.balance) + (tradeQuantity * priceDifference);
+                buyer.balance = parseFloat(newBuyerBalance.toFixed(2));
+            }
 
-          const seller = await User.findByPk(sellOrder.userId, { lock: t.LOCK.UPDATE, transaction: t });
-          seller.balance = parseFloat(seller.balance) + tradeTotal;
-          await seller.save({ transaction: t });
+            const seller = await User.findByPk(sellOrder.userId, { lock: t.LOCK.UPDATE, transaction: t });
+            // DÜZELTME: Yuvarlama eklendi
+            const newSellerBalance = parseFloat(seller.balance) + tradeTotal;
+            seller.balance = parseFloat(newSellerBalance.toFixed(2));
+            await seller.save({ transaction: t });
 
-          const buyerShare = await Share.findOne({ where: { userId: buyer.id, marketId, outcome }, transaction: t }) || await Share.create({ userId: buyer.id, marketId, outcome, quantity: 0 }, { transaction: t });
-          buyerShare.quantity += tradeQuantity;
-          await buyerShare.save({ transaction: t });
-          
-          quantity -= tradeQuantity;
-          sellOrder.quantity -= tradeQuantity;
-
-          if (sellOrder.quantity === 0) sellOrder.status = 'FILLED';
-          await sellOrder.save({ transaction: t });
+            const buyerShare = await Share.findOne({ where: { userId: buyer.id, marketId, outcome }, transaction: t }) || await Share.create({ userId: buyer.id, marketId, outcome, quantity: 0 }, { transaction: t });
+            buyerShare.quantity += tradeQuantity;
+            await buyerShare.save({ transaction: t });
+            
+            quantity -= tradeQuantity;
+            sellOrder.quantity -= tradeQuantity;
+            if (sellOrder.quantity === 0) sellOrder.status = 'FILLED';
+            await sellOrder.save({ transaction: t });
         }
         await buyer.save({ transaction: t });
 
       } else if (type === 'SELL') {
-        // --- SATIŞ EMRİ MANTIĞI ---
         const seller = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
         const sellerShare = await Share.findOne({ where: { userId, marketId, outcome }, transaction: t });
 
-        if (!sellerShare || sellerShare.quantity < quantity) {
-          throw new Error('Satmak için yeterli hisseniz yok.');
-        }
-
+        if (!sellerShare || sellerShare.quantity < quantity) throw new Error('Satmak için yeterli hisseniz yok.');
+        
         sellerShare.quantity -= quantity;
         await sellerShare.save({ transaction: t });
         
         const matchingBuyOrders = await Order.findAll({
-            where: {
-              marketId, type: 'BUY', outcome, status: 'OPEN',
-              price: { [Op.gte]: price },
-              userId: { [Op.ne]: userId }
-            },
+            where: { marketId, type: 'BUY', outcome, status: 'OPEN', price: { [Op.gte]: price }, userId: { [Op.ne]: userId } },
             order: [['price', 'DESC'], ['createdAt', 'ASC']],
             lock: t.LOCK.UPDATE,
             transaction: t
@@ -90,41 +84,47 @@ class OrderService {
 
         for (const buyOrder of matchingBuyOrders) {
             if (quantity === 0) break;
-
             const tradeQuantity = Math.min(quantity, buyOrder.quantity);
             const tradePrice = buyOrder.price;
             const tradeTotal = tradeQuantity * tradePrice;
-
-            seller.balance = parseFloat(seller.balance) + tradeTotal;
+            
+            // DÜZELTME: Yuvarlama eklendi
+            const newSellerBalance = parseFloat(seller.balance) + tradeTotal;
+            seller.balance = parseFloat(newSellerBalance.toFixed(2));
 
             const buyer = await User.findByPk(buyOrder.userId, { lock: t.LOCK.UPDATE, transaction: t });
             const buyerShare = await Share.findOne({ where: { userId: buyer.id, marketId, outcome }, transaction: t }) || await Share.create({ userId: buyer.id, marketId, outcome, quantity: 0 }, { transaction: t });
             buyerShare.quantity += tradeQuantity;
             await buyerShare.save({ transaction: t });
             
-            // Alıcıya, daha iyi bir fiyattan (daha pahalıya) sattığı için para iadesi yap
             const priceDifference = tradePrice - price;
             if(priceDifference > 0) {
-                buyer.balance += tradeQuantity * priceDifference;
+                // DÜZELTME: Yuvarlama eklendi
+                const newBuyerBalance = parseFloat(buyer.balance) + (tradeQuantity * priceDifference);
+                buyer.balance = parseFloat(newBuyerBalance.toFixed(2));
                 await buyer.save({transaction: t});
             }
 
             quantity -= tradeQuantity;
             buyOrder.quantity -= tradeQuantity;
-
             if (buyOrder.quantity === 0) buyOrder.status = 'FILLED';
             await buyOrder.save({ transaction: t });
         }
         await seller.save({ transaction: t });
       }
       
-      if (quantity > 0) {
-        const remainingOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' }, { transaction: t });
-        await t.commit();
+      await t.commit(); // Transaction'ı burada onayla
+
+      if (quantity === 0) {
+        return { message: "Emir tamamen eşleşti ve tamamlandı." };
+      } 
+      
+      const remainingOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' });
+
+      if (quantity < orderData.quantity) {
         return { message: "Emriniz kısmen eşleşti, kalanı deftere yazıldı.", order: remainingOrder };
       } else {
-        await t.commit();
-        return { message: "Emir tamamen eşleşti ve tamamlandı." };
+        return { message: "Eşleşme bulunamadı, emriniz deftere yazıldı.", order: remainingOrder };
       }
 
     } catch (error) {
