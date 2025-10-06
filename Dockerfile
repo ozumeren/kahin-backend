@@ -1,5 +1,5 @@
 # 1. Adım: Node.js'in kurulu olduğu bir başlangıç ortamı seç
-FROM node:18-alpine
+FROM node:18
 
 # --- YENİ EKLENEN KOD ---
 # 'pg-native' gibi paketlerin derlenmesi için gerekli olan araçları kur.
