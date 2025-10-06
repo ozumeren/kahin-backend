@@ -28,14 +28,15 @@ class OrderService {
         const totalCost = quantity * price;
         if (buyer.balance < totalCost) throw new Error('Yetersiz bakiye.');
         
+        // Alıcının parasını "kilitle"
         buyer.balance -= totalCost;
         await buyer.save({ transaction: t });
 
-        const matchingSellOrder = await Order.findOne({
+        // Uygun satış emirlerini bul (en ucuzdan pahalıya doğru)
+        const matchingSellOrders = await Order.findAll({
           where: {
             marketId, type: 'SELL', outcome, status: 'OPEN',
             price: { [Op.lte]: price },
-            quantity: quantity,
             userId: { [Op.ne]: userId }
           },
           order: [['price', 'ASC']],
@@ -43,26 +44,40 @@ class OrderService {
           transaction: t
         });
 
-        if (matchingSellOrder) {
-          console.log('Alış emri için eşleşme bulundu!');
-          const seller = await User.findByPk(matchingSellOrder.userId, { lock: t.LOCK.UPDATE, transaction: t });
+        for (const sellOrder of matchingSellOrders) {
+          if (quantity === 0) break; // Alınacak miktar bittiyse döngüden çık
 
-          seller.balance += quantity * matchingSellOrder.price;
+          const tradeQuantity = Math.min(quantity, sellOrder.quantity); // Eşleşecek miktar
+          const tradePrice = sellOrder.price; // Eşleşme her zaman defterdeki emrin fiyatından olur
+          const tradeTotal = tradeQuantity * tradePrice;
+
+          // Alıcıya, daha iyi bir fiyattan (daha ucuza) aldığı için para iadesi yap (varsa)
+          const priceDifference = price - tradePrice;
+          if (priceDifference > 0) {
+            buyer.balance += tradeQuantity * priceDifference;
+            await buyer.save({ transaction: t });
+          }
+
+          // Satıcıyı bul ve parasını ver
+          const seller = await User.findByPk(sellOrder.userId, { lock: t.LOCK.UPDATE, transaction: t });
+          seller.balance += tradeTotal;
           await seller.save({ transaction: t });
 
+          // Alıcının hisselerini artır
           const buyerShare = await Share.findOne({ where: { userId: buyer.id, marketId, outcome }, transaction: t }) || await Share.create({ userId: buyer.id, marketId, outcome, quantity: 0 }, { transaction: t });
-          buyerShare.quantity += quantity;
+          buyerShare.quantity += tradeQuantity;
           await buyerShare.save({ transaction: t });
           
-          matchingSellOrder.status = 'FILLED';
-          await matchingSellOrder.save({ transaction: t });
+          // Alış ve satış emirlerini güncelle
+          quantity -= tradeQuantity;
+          sellOrder.quantity -= tradeQuantity;
 
-          newOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'FILLED' }, { transaction: t });
-        } else {
-          console.log('Alış emri için eşleşme bulunamadı, emir deftere yazılıyor.');
-          newOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' }, { transaction: t });
+          if (sellOrder.quantity === 0) {
+            sellOrder.status = 'FILLED';
+          }
+          await sellOrder.save({ transaction: t });
         }
-        
+
       } else if (type === 'SELL') {
         const seller = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
         const sellerShare = await Share.findOne({ where: { userId, marketId, outcome }, transaction: t });
@@ -71,47 +86,22 @@ class OrderService {
           throw new Error('Satmak için yeterli hisseniz yok.');
         }
 
+        // Satıcının hisselerini "kilitle"
         sellerShare.quantity -= quantity;
         await sellerShare.save({ transaction: t });
-
-        const matchingBuyOrder = await Order.findOne({
-          where: {
-            marketId, type: 'BUY', outcome, status: 'OPEN',
-            price: { [Op.gte]: price },
-            quantity: quantity,
-            userId: { [Op.ne]: userId }
-          },
-          order: [['price', 'DESC']],
-          lock: t.LOCK.UPDATE,
-          transaction: t
-        });
-
-        if (matchingBuyOrder) {
-          console.log('Satış emri için eşleşme bulundu!');
-          const buyer = await User.findByPk(matchingBuyOrder.userId, { lock: t.LOCK.UPDATE, transaction: t });
-          
-          seller.balance += quantity * matchingBuyOrder.price;
-          await seller.save({ transaction: t });
-
-          const buyerShare = await Share.findOne({ where: { userId: buyer.id, marketId, outcome }, transaction: t }) || await Share.create({ userId: buyer.id, marketId, outcome, quantity: 0 }, { transaction: t });
-          buyerShare.quantity += quantity;
-          await buyerShare.save({ transaction: t });
-
-          matchingBuyOrder.status = 'FILLED';
-          await matchingBuyOrder.save({ transaction: t });
-
-          newOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'FILLED' }, { transaction: t });
-        } else {
-          console.log('Satış emri için eşleşme bulunamadı, emir deftere yazılıyor.');
-          newOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' }, { transaction: t });
-        }
         
-      } else {
-        throw new Error('Geçersiz emir tipi.');
+        // TODO: Alış emirleriyle eşleştirme mantığı buraya eklenecek (BUY ile simetrik)
       }
-      
-      await t.commit();
-      return newOrder;
+
+      // Eğer emrin tamamı eşleşmediyse, kalanı deftere yaz
+      if (quantity > 0) {
+        const remainingOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' }, { transaction: t });
+        await t.commit();
+        return remainingOrder;
+      } else {
+        await t.commit();
+        return { message: "Emir tamamen eşleşti ve tamamlandı." };
+      }
 
     } catch (error) {
       await t.rollback();
