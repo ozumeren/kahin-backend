@@ -1,4 +1,5 @@
 // src/services/order.service.js
+const { Op } = require('sequelize');
 const db = require('../models');
 const { Order, User, Market, sequelize } = db;
 
