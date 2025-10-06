@@ -1,11 +1,16 @@
-// src/controllers/user.controller.js
-class UserController {
-  getMe(req, res) {
-    // Middleware, req.user içine kullanıcı bilgilerini zaten koymuştu.
-    const currentUser = req.user;
-    currentUser.password = undefined; // Güvenlik için şifreyi yanıttan kaldır
+const userService = require('../services/user.service');
 
-    res.status(200).json(currentUser);
+class UserController {
+  async getMe(req, res) {
+    try {
+      const userId = req.user.id;
+      const userWithPortfolio = await userService.findUserWithPortfolio(userId);
+
+      res.status(200).json(userWithPortfolio);
+    } catch (error) {
+      res.status(404).json({ message: error.message });
+    }
   }
 }
+
 module.exports = new UserController();
