@@ -83,8 +83,53 @@ class OrderService {
         }
 
       } else if (type === 'SELL') {
-        // TODO: Satış emri ve eşleştirme mantığı buraya eklenecek.
-        throw new Error('Satış emirleri henüz desteklenmiyor.');
+        // --- YENİ SATIŞ EMRİ MANTIĞI ---
+        const seller = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
+        const sellerShare = await Share.findOne({ where: { userId, marketId, outcome }, transaction: t });
+
+        if (!sellerShare || sellerShare.quantity < quantity) {
+          throw new Error('Satmak için yeterli hisseniz yok.');
+        }
+
+        // 1. Satıcının hisselerini "kilitle"
+        sellerShare.quantity -= quantity;
+        await sellerShare.save({ transaction: t });
+
+        // 2. Uygun bir alış emri ara
+        const matchingBuyOrder = await Order.findOne({
+          where: {
+            marketId, type: 'BUY', outcome, status: 'OPEN',
+            price: { [Op.gte]: price }, // Alış fiyatı, satış fiyatına eşit veya daha yüksek olmalı
+            quantity: quantity,
+            userId: { [Op.ne]: userId }
+          },
+          order: [['price', 'DESC']], // En yüksek teklifi veren alıcıyı önce bul
+          lock: t.LOCK.UPDATE,
+          transaction: t
+        });
+
+        if (matchingBuyOrder) {
+          console.log('Satış emri için eşleşme bulundu!');
+          const buyer = await User.findByPk(matchingBuyOrder.userId, { lock: t.LOCK.UPDATE, transaction: t });
+
+          // Satıcının bakiyesini artır
+          seller.balance += quantity * matchingBuyOrder.price; // Eşleşme, alıcının fiyatından olur
+          await seller.save({ transaction: t });
+
+          // Alıcının hisselerini artır
+          const buyerShare = await Share.findOne({ where: { userId: buyer.id, marketId, outcome }, transaction: t }) || await Share.create({ userId: buyer.id, marketId, outcome, quantity: 0 }, { transaction: t });
+          buyerShare.quantity += quantity;
+          await buyerShare.save({ transaction: t });
+
+          // Emirlerin durumunu 'FILLED' (tamamlandı) olarak güncelle
+          matchingBuyOrder.status = 'FILLED';
+          await matchingBuyOrder.save({ transaction: t });
+          newOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'FILLED' }, { transaction: t });
+        } else {
+          console.log('Satış emri için eşleşme bulunamadı, emir deftere yazılıyor.');
+          newOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' }, { transaction: t });
+        }
+        
       } else {
         throw new Error('Geçersiz emir tipi.');
       }
