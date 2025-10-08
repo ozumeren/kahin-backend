@@ -29,6 +29,58 @@ class UserService {
 
     return user;
   }
+
+  // Kullanıcıyı admin yapma
+  async promoteToAdmin(userId) {
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      throw new Error('Kullanıcı bulunamadı.');
+    }
+
+    if (user.role === 'admin') {
+      throw new Error('Bu kullanıcı zaten admin.');
+    }
+
+    user.role = 'admin';
+    await user.save();
+
+    // Şifreyi döndürme
+    user.password = undefined;
+    return user;
+  }
+
+  // Kullanıcıyı normal user yapma (admin yetkisini geri alma)
+  async demoteFromAdmin(userId) {
+    const user = await User.findByPk(userId);
+
+    if (!user) {
+      throw new Error('Kullanıcı bulunamadı.');
+    }
+
+    if (user.role === 'user') {
+      throw new Error('Bu kullanıcı zaten normal kullanıcı.');
+    }
+
+    user.role = 'user';
+    await user.save();
+
+    user.password = undefined;
+    return user;
+  }
+
+  // Kullanıcı ID'sine göre bul
+  async findById(userId) {
+    const user = await User.findByPk(userId, {
+      attributes: { exclude: ['password'] }
+    });
+
+    if (!user) {
+      throw new Error('Kullanıcı bulunamadı.');
+    }
+
+    return user;
+  }
 }
 
 module.exports = new UserService();

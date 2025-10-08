@@ -1,8 +1,8 @@
 // src/services/dev.service.js
 const db = require('../models');
 const { User, Market, Share, Order, Transaction, sequelize } = db;
-const bcrypt = require('bcryptjs'); // bcrypt'i import ediyoruz
-const jwt = require('jsonwebtoken'); // jwt'yi import ediyoruz
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 class DevService {
   async setupTestEnvironment() {
@@ -17,38 +17,102 @@ class DevService {
 
       // 2. Test kullanıcılarını oluştur
       const hashedPassword = await bcrypt.hash('123', 10);
-      const [alici, satici] = await User.bulkCreate([
-        { username: 'alici', email: 'alici@kahin.com', password: hashedPassword, balance: 100.00 },
-        { username: 'satici', email: 'satici@kahin.com', password: hashedPassword, balance: 100.00 }
-      ], { transaction: t, returning: true }); // 'returning: true' objelerin tamamını döndürür
+      
+      const users = await User.bulkCreate([
+        { 
+          username: 'admin', 
+          email: 'admin@kahin.com', 
+          password: hashedPassword, 
+          balance: 10000.00,
+          role: 'admin' // Admin kullanıcı
+        },
+        { 
+          username: 'alici', 
+          email: 'alici@kahin.com', 
+          password: hashedPassword, 
+          balance: 1000.00,
+          role: 'user'
+        },
+        { 
+          username: 'satici', 
+          email: 'satici@kahin.com', 
+          password: hashedPassword, 
+          balance: 1000.00,
+          role: 'user'
+        }
+      ], { transaction: t, returning: true });
 
-      // 3. Test pazarını oluştur
-      const market = await Market.create({
-        title: "Otomatik Test Pazarı",
-        closing_date: "2029-12-31T23:59:59Z"
-      }, { transaction: t });
+      const [admin, alici, satici] = users;
+
+      // 3. Test pazarları oluştur
+      const markets = await Market.bulkCreate([
+        {
+          title: "Bitcoin 2025 Yılında 100.000$ Olacak mı?",
+          description: "Bitcoin'in 2025 yıl sonu itibariyle 100.000 doların üzerinde olup olmayacağı",
+          closing_date: "2025-12-31T23:59:59Z",
+          status: 'open'
+        },
+        {
+          title: "Türkiye 2026 Dünya Kupası'na Katılacak mı?",
+          description: "Türkiye Milli Takımı 2026 Dünya Kupası finallerine katılabilecek mi?",
+          closing_date: "2026-06-30T23:59:59Z",
+          status: 'open'
+        }
+      ], { transaction: t, returning: true });
+
+      const [market1, market2] = markets;
 
       // 4. Satıcı'ya hisse ver
       await Share.create({
         userId: satici.id,
-        marketId: market.id,
+        marketId: market1.id,
         outcome: true, // "Evet" hissesi
         quantity: 100
       }, { transaction: t });
-      
-      // --- YENİ EKLENEN KISIM: TOKEN OLUŞTURMA ---
-      const aliciToken = jwt.sign({ id: alici.id }, process.env.JWT_SECRET, { expiresIn: '1d' });
-      const saticiToken = jwt.sign({ id: satici.id }, process.env.JWT_SECRET, { expiresIn: '1d' });
-      // ------------------------------------------
+
+      // 5. Token'ları oluştur
+      const adminToken = jwt.sign({ id: admin.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+      const aliciToken = jwt.sign({ id: alici.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+      const saticiToken = jwt.sign({ id: satici.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
       await t.commit();
       
-      // Cevap olarak ID'ler yerine Token'ları dön
       return { 
-        message: 'Test ortamı başarıyla kuruldu! Tokenlar hazır.', 
-        marketId: market.id, 
-        aliciToken, 
-        saticiToken 
+        message: 'Test ortamı başarıyla kuruldu!', 
+        users: {
+          admin: {
+            id: admin.id,
+            username: admin.username,
+            role: admin.role,
+            token: adminToken
+          },
+          alici: {
+            id: alici.id,
+            username: alici.username,
+            role: alici.role,
+            token: aliciToken
+          },
+          satici: {
+            id: satici.id,
+            username: satici.username,
+            role: satici.role,
+            token: saticiToken
+          }
+        },
+        markets: {
+          market1: {
+            id: market1.id,
+            title: market1.title
+          },
+          market2: {
+            id: market2.id,
+            title: market2.title
+          }
+        },
+        credentials: {
+          email: 'admin@kahin.com / alici@kahin.com / satici@kahin.com',
+          password: '123'
+        }
       };
 
     } catch (error) {
@@ -57,4 +121,5 @@ class DevService {
     }
   }
 }
+
 module.exports = new DevService();

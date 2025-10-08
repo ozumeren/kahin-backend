@@ -30,10 +30,14 @@ const User = sequelize.define('User', {
     type: DataTypes.DECIMAL(18, 2),
     allowNull: false,
     defaultValue: 0.00
+  },
+  role: {
+    type: DataTypes.ENUM('user', 'admin'),
+    allowNull: false,
+    defaultValue: 'user'
   }
 }, {
-  // Model seçenekleri
-  tableName: 'users' // Veritabanındaki tablo adının 'users' olmasını sağlıyoruz
+  tableName: 'users'
 });
 
 module.exports = User;
