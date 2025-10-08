@@ -42,6 +42,7 @@ app.get('/', (req, res) => {
       markets: '/api/v1/markets',
       shares: '/api/v1/shares',
       orders: '/api/v1/orders',
+      transactions: '/api/v1/transactions',
       admin: '/api/v1/admin',
       websocket: 'wss://api.kahinmarket.com/ws'
     }
@@ -54,6 +55,7 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/markets', marketRoutes);
 app.use('/api/v1/shares', shareRoutes);
 app.use('/api/v1/orders', orderRoutes);
+app.use('/api/v1/transactions', transactionRoutes);
 app.use('/api/v1/admin', adminRoutes);
 
 // Dev route (sadece production dışında)
@@ -69,9 +71,13 @@ app.use(errorHandler);
 
 async function startServer() {
   try {
-    // Önce Redis'e bağlan
-    await redisClient.connect();
-    console.log('✓ Redis bağlantısı başarıyla kuruldu.');
+    // Redis bağlantısı kontrol et
+    if (!redisClient.isOpen) {
+      await redisClient.connect();
+      console.log('✓ Redis bağlantısı başarıyla kuruldu.');
+    } else {
+      console.log('✓ Redis zaten bağlı.');
+    }
 
     // WebSocket sunucusunu başlat
     await websocketServer.initialize(server);
@@ -103,20 +109,6 @@ process.on('unhandledRejection', (reason, promise) => {
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
   process.exit(1);
-});
-
-startServer();
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM alındı, sunucu kapatılıyor...');
-  marketAutomation.stopAutomation();
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  console.log('SIGINT alındı, sunucu kapatılıyor...');
-  marketAutomation.stopAutomation();
-  process.exit(0);
 });
 
 startServer();
