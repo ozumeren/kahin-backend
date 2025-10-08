@@ -4,6 +4,7 @@ const router = express.Router();
 const adminController = require('../controllers/admin.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 const adminMiddleware = require('../middlewares/admin.middleware');
+const marketAutomation = require('../services/market.automation.service');
 
 // Pazar sonuçlandırma (resolve)
 router.post('/markets/:id/resolve', 
@@ -18,6 +19,28 @@ router.post('/markets/:id/close',
   adminMiddleware,
   adminController.closeMarket
 );
+
+// Manuel market kapama
+router.post('/markets/:marketId/close', authMiddleware, adminMiddleware, async (req, res, next) => {
+  try {
+    const { marketId } = req.params;
+    const { result } = req.body; // true/false/null
+    
+    const closeResult = await marketAutomation.manualCloseMarket(
+      marketId, 
+      req.user.id, 
+      result
+    );
+    
+    res.status(200).json({
+      success: true,
+      message: 'Market başarıyla kapatıldı',
+      data: closeResult
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Pazar oluşturma - Sadece adminler oluşturabilsin
 router.post('/markets',

@@ -7,6 +7,7 @@ const http = require('http');
 const db = require('./models');
 const redisClient = require('../config/redis');
 const websocketServer = require('../config/websocket');
+const marketAutomation = require('./services/market.automation.service');
 const { errorHandler, notFoundHandler } = require('./middlewares/error.middleware');
 
 const authRoutes = require('./routes/auth.route');
@@ -79,12 +80,16 @@ async function startServer() {
     await db.sequelize.sync({ alter: true });
     console.log('✓ Veritabanı senkronizasyonu başarılı.');
 
+    // Market otomasyonunu başlat
+    marketAutomation.startAutomation();
+
     server.listen(PORT, () => {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`✓ HTTP Sunucu ${PORT} portunda başlatıldı.`);
       console.log(`✓ WebSocket: wss://api.kahinmarket.com/ws`);
       console.log(`✓ Ortam: ${process.env.NODE_ENV || 'development'}`);
       console.log(`✓ API Base URL: https://api.kahinmarket.com/api/v1`);
+      console.log(`✓ Market Otomasyonu: Aktif`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     });
   } catch (error) {
@@ -96,12 +101,27 @@ async function startServer() {
 // Beklenmeyen hataları yakala
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  marketAutomation.stopAutomation();
   process.exit(1);
 });
 
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
+  marketAutomation.stopAutomation();
   process.exit(1);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM alındı, sunucu kapatılıyor...');
+  marketAutomation.stopAutomation();
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT alındı, sunucu kapatılıyor...');
+  marketAutomation.stopAutomation();
+  process.exit(0);
 });
 
 startServer();
