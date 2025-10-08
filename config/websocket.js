@@ -222,3 +222,98 @@ class WebSocketServer {
 }
 
 module.exports = new WebSocketServer();
+
+// orderService.js
+class OrderService {
+  async createOrder(orderData) {
+    let { userId, marketId, type, outcome, quantity, price } = orderData;
+    const initialQuantity = quantity;
+    const t = await sequelize.transaction();
+
+    try {
+      const market = await Market.findByPk(marketId, { transaction: t });
+      if (!market) throw ApiError.notFound('Pazar bulunamadı.');
+      if (market.status !== 'open') throw ApiError.badRequest('Pazar işlem için açık değil.');
+      
+      const { bids: bidsKey, asks: asksKey } = getMarketKeys(marketId, outcome);
+      
+      // ...existing order processing code...
+      
+      await t.commit(); 
+
+      // 🔥 ÖNEMLİ: İşlem tamamlandıktan sonra WebSocket güncellemesi
+      await this.publishOrderBookUpdate(marketId);
+
+      if (quantity === 0) {
+        return { message: "Emir tamamen eşleşti ve tamamlandı." };
+      } 
+      
+      const newOrder = await Order.findOne({ where: {userId, marketId, type, outcome, status: 'OPEN'} });
+      if (newOrder) {
+        newOrder.quantity += quantity;
+        newOrder.price = price;
+        await newOrder.save();
+        await redisClient.zAdd(type === 'BUY' ? bidsKey : asksKey, { score: price, value: `${newOrder.id}:${newOrder.quantity}` }, { XX: true });
+        
+        // 🔥 Güncelleme sonrası WebSocket bildirimi
+        await this.publishOrderBookUpdate(marketId);
+        
+        return { message: "Açık emriniz güncellendi.", order: newOrder};
+      }
+      const remainingOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' });
+      await redisClient.zAdd(type === 'BUY' ? bidsKey : asksKey, { score: price, value: `${remainingOrder.id}:${quantity}` });
+
+      // 🔥 Yeni emir eklendikten sonra WebSocket bildirimi
+      await this.publishOrderBookUpdate(marketId);
+
+      if (quantity < initialQuantity) {
+        return { message: "Emriniz kısmen eşleşti, kalanı deftere yazıldı.", order: remainingOrder };
+      } else {
+        return { message: "Eşleşme bulunamadı, emriniz deftere yazıldı.", order: remainingOrder };
+      }
+
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  }
+
+  async cancelOrder(orderId, userId) {
+    const t = await sequelize.transaction();
+
+    try {
+      // ...existing cancel logic...
+      
+      await t.commit();
+
+      // 🔥 İptal işlemi sonrası WebSocket güncellemesi
+      await this.publishOrderBookUpdate(order.marketId);
+
+      return {
+        message: 'Emir başarıyla iptal edildi.',
+        cancelledOrder: order
+      };
+
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  }
+
+  // 🔥 YENİ EKLENEN FONKSİYON
+  async publishOrderBookUpdate(marketId) {
+    try {
+      // Güncel order book'u al
+      const orderBook = await marketService.getOrderBook(marketId);
+      
+      // WebSocket üzerinden yayınla
+      await websocketServer.publishOrderBookUpdate(marketId, orderBook);
+      
+      console.log(`📡 Order book güncellendi ve WebSocket'e gönderildi: ${marketId}`);
+    } catch (error) {
+      console.error(`WebSocket order book güncelleme hatası (Market: ${marketId}):`, error.message);
+    }
+  }
+
+  // ...existing code...
+}
