@@ -166,6 +166,134 @@ class OrderService {
       throw error;
     }
   }
+
+  async cancelOrder(orderId, userId) {
+    const t = await sequelize.transaction();
+
+    try {
+      // 1. Emri bul
+      const order = await Order.findByPk(orderId, { transaction: t });
+
+      if (!order) {
+        throw ApiError.notFound('Emir bulunamadı.');
+      }
+
+      // 2. Emrin sahibi kontrolü
+      if (order.userId !== userId) {
+        throw ApiError.forbidden('Bu emri iptal etme yetkiniz yok.');
+      }
+
+      // 3. Emir durumu kontrolü
+      if (order.status !== 'OPEN') {
+        throw ApiError.badRequest('Sadece açık emirler iptal edilebilir.');
+      }
+
+      // 4. Market kontrolü
+      const market = await Market.findByPk(order.marketId, { transaction: t });
+      if (!market) {
+        throw ApiError.notFound('Pazar bulunamadı.');
+      }
+
+      // 5. Redis'ten emri sil
+      const outcomeString = order.outcome ? 'yes' : 'no';
+      const orderType = order.type === 'BUY' ? 'bids' : 'asks';
+      const redisKey = `market:${order.marketId}:${outcomeString}:${orderType}`;
+
+      // Redis'teki tüm emirleri tara ve bu emri bul
+      const allOrders = await redisClient.zRangeWithScores(redisKey, 0, -1);
+      for (const redisOrder of allOrders) {
+        if (redisOrder.value.startsWith(`${orderId}:`)) {
+          await redisClient.zRem(redisKey, redisOrder.value);
+          break;
+        }
+      }
+
+      // 6. Eğer BUY emriyse, kilitli parayı iade et
+      if (order.type === 'BUY') {
+        const user = await User.findByPk(userId, { 
+          lock: t.LOCK.UPDATE, 
+          transaction: t 
+        });
+
+        const refundAmount = parseFloat(order.quantity) * parseFloat(order.price);
+        user.balance = parseFloat(user.balance) + refundAmount;
+        await user.save({ transaction: t });
+      }
+
+      // 7. Eğer SELL emriyse, kilitli hisseleri iade et
+      if (order.type === 'SELL') {
+        let share = await Share.findOne({
+          where: {
+            userId,
+            marketId: order.marketId,
+            outcome: order.outcome
+          },
+          transaction: t
+        });
+
+        if (!share) {
+          // Hisse kaydı yoksa yeni oluştur
+          share = await Share.create({
+            userId,
+            marketId: order.marketId,
+            outcome: order.outcome,
+            quantity: order.quantity
+          }, { transaction: t });
+        } else {
+          // Varsa miktarı artır
+          share.quantity = parseInt(share.quantity) + parseInt(order.quantity);
+          await share.save({ transaction: t });
+        }
+      }
+
+      // 8. Emri iptal edildi olarak işaretle
+      order.status = 'CANCELLED';
+      await order.save({ transaction: t });
+
+      await t.commit();
+
+      return {
+        message: 'Emir başarıyla iptal edildi.',
+        cancelledOrder: order
+      };
+
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  }
+
+  async getUserOrders(userId, filters = {}) {
+    const where = { userId };
+
+    // Status filtresi (OPEN, FILLED, CANCELLED)
+    if (filters.status) {
+      where.status = filters.status;
+    }
+
+    // Market filtresi
+    if (filters.marketId) {
+      where.marketId = filters.marketId;
+    }
+
+    // Order type filtresi (BUY, SELL)
+    if (filters.type) {
+      where.type = filters.type;
+    }
+
+    const orders = await Order.findAll({
+      where,
+      include: [
+        {
+          model: Market,
+          attributes: ['id', 'title', 'status']
+        }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+
+    return orders;
+  }
 }
 
 module.exports = new OrderService();

@@ -76,7 +76,7 @@ async function startServer() {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`✓ Sunucu ${PORT} portunda başlatıldı.`);
       console.log(`✓ Ortam: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`✓ API Base URL: https://api.kahinmarket.com/api/v1`);
+      console.log(`✓ API Base URL: http://localhost:${PORT}/api/v1`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     });
   } catch (error) {
