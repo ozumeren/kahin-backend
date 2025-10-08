@@ -2,16 +2,26 @@
 const marketService = require('../services/market.service');
 
 class MarketController {
+  // Tüm pazarları listele (Public)
   async getMarkets(req, res) {
     try {
-      // Şimdilik tüm pazarları getiriyoruz.
-      const markets = await marketService.findAll();
+      // Query parametrelerinden filtreleme al
+      const filters = {};
+      if (req.query.status) {
+        filters.status = req.query.status;
+      }
+
+      const markets = await marketService.findAll(filters);
       res.status(200).json(markets);
     } catch (error) {
-      res.status(500).json({ message: 'Pazarlar getirilirken bir hata oluştu.', error: error.message });
+      res.status(500).json({ 
+        message: 'Pazarlar getirilirken bir hata oluştu.', 
+        error: error.message 
+      });
     }
   }
 
+  // Tek bir pazarın detayını getir (Public)
   async getMarketById(req, res) {
     try {
       const { id } = req.params;
@@ -21,17 +31,14 @@ class MarketController {
       if (error.message === 'Pazar bulunamadı.') {
         return res.status(404).json({ message: error.message });
       }
-      res.status(500).json({ message: 'Pazar getirilirken bir hata oluştu.', error: error.message });
+      res.status(500).json({ 
+        message: 'Pazar getirilirken bir hata oluştu.', 
+        error: error.message 
+      });
     }
   }
-  async createMarket(req, res) {
-    try {
-      const newMarket = await marketService.create(req.body);
-      res.status(201).json(newMarket);
-    } catch (error) {
-      res.status(400).json({ message: 'Pazar oluşturulurken bir hata oluştu.', error: error.message });
-    }
-  }
+
+  // NOT: createMarket fonksiyonu artık admin.controller.js'te
 }
 
 module.exports = new MarketController();
