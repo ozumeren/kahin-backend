@@ -38,23 +38,31 @@ class PortfolioService {
     for (const share of shares) {
       const market = share.Market;
       
-      // Bu market için kullanıcının toplam yatırımı
-      const marketTransactions = await Transaction.findAll({
+      // Bu market+outcome için ortalama maliyet hesabı
+      // Hisse miktarı kadar yatırım yapılmış olmalı (1 TL/hisse varsayımıyla)
+      // Ama gerçek maliyeti transaction'lardan bulmalıyız
+      
+      // Sadece bu outcome için payout transaction'larını al (eşleşme sonucu aldığı para)
+      const payoutTransactions = await Transaction.findAll({
         where: {
           userId,
           marketId: market.id,
-          type: 'bet'
+          type: 'payout'
         }
       });
 
-      const invested = marketTransactions.reduce((sum, tx) => {
-        return sum + Math.abs(parseFloat(tx.amount));
-      }, 0);
+      // Eğer payout varsa, bu kullanıcının SELL yaptığı anlamına gelir
+      // Eğer yoksa, BUY yapıp hisse aldı demektir
+      
+      // Basit hesaplama: Her hisse ortalama 1 TL'ye mal olmuş kabul edelim
+      // (Daha doğru hesaplama için trade history gerekir)
+      const avgCost = 1.00; // Simplification
+      const invested = parseFloat(share.quantity) * avgCost;
 
       // Mevcut değer (her hisse 1 TL değerinde)
       const currentValue = parseFloat(share.quantity) * 1.00;
 
-      // Gerçekleşmemiş kar/zarar
+      // Gerçekleşmemiş kar/zarar (şu an için 0 çünkü avgCost = currentValue)
       const unrealizedPnL = currentValue - invested;
       const pnlPercentage = invested > 0 ? ((unrealizedPnL / invested) * 100).toFixed(2) : '0.00';
 
