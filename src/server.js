@@ -16,6 +16,7 @@ const shareRoutes = require('./routes/share.route');
 const orderRoutes = require('./routes/order.route');
 const adminRoutes = require('./routes/admin.route');
 const transactionRoutes = require('./routes/transaction.route');
+const portfolioRoutes = require('./routes/portfolio.route');
 const devRoutes = require('./routes/dev.route');
 
 const app = express();
