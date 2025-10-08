@@ -143,6 +143,8 @@ class OrderService {
       await t.commit(); 
 
       if (quantity === 0) {
+        // 🔥 İşlem tamamlandıktan sonra WebSocket güncellemesi
+        await this.publishOrderBookUpdate(marketId);
         return { message: "Emir tamamen eşleşti ve tamamlandı." };
       } 
       
@@ -152,10 +154,17 @@ class OrderService {
         newOrder.price = price;
         await newOrder.save();
         await redisClient.zAdd(type === 'BUY' ? bidsKey : asksKey, { score: price, value: `${newOrder.id}:${newOrder.quantity}` }, { XX: true });
+        
+        // 🔥 Güncelleme sonrası WebSocket bildirimi
+        await this.publishOrderBookUpdate(marketId);
+        
         return { message: "Açık emriniz güncellendi.", order: newOrder};
       }
       const remainingOrder = await Order.create({ userId, marketId, type, outcome, quantity, price, status: 'OPEN' });
       await redisClient.zAdd(type === 'BUY' ? bidsKey : asksKey, { score: price, value: `${remainingOrder.id}:${quantity}` });
+
+      // 🔥 Yeni emir eklendikten sonra WebSocket bildirimi
+      await this.publishOrderBookUpdate(marketId);
 
       if (quantity < initialQuantity) {
         return { message: "Emriniz kısmen eşleşti, kalanı deftere yazıldı.", order: remainingOrder };
@@ -254,6 +263,9 @@ class OrderService {
 
       await t.commit();
 
+      // 🔥 İptal işlemi sonrası WebSocket güncellemesi
+      await this.publishOrderBookUpdate(order.marketId);
+
       return {
         message: 'Emir başarıyla iptal edildi.',
         cancelledOrder: order
@@ -262,6 +274,21 @@ class OrderService {
     } catch (error) {
       await t.rollback();
       throw error;
+    }
+  }
+
+  // 🔥 YENİ EKLENEN FONKSİYON
+  async publishOrderBookUpdate(marketId) {
+    try {
+      // Güncel order book'u al
+      const orderBook = await marketService.getOrderBook(marketId);
+      
+      // WebSocket üzerinden yayınla
+      await websocketServer.publishOrderBookUpdate(marketId, orderBook);
+      
+      console.log(`📡 Order book güncellendi ve WebSocket'e gönderildi: ${marketId}`);
+    } catch (error) {
+      console.error(`WebSocket order book güncelleme hatası (Market: ${marketId}):`, error.message);
     }
   }
 

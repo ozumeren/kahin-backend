@@ -211,10 +211,20 @@ class WebSocketServer {
   // Order service tarafından çağrılacak (emir değiştiğinde)
   async publishOrderBookUpdate(marketId, orderBookData) {
     try {
-      await this.subscriberClient.publish(
+      // ❌ Yanlış - subscriberClient ile publish yapmayın
+      // await this.subscriberClient.publish(
+      //   `orderbook:${marketId}`,
+      //   JSON.stringify(orderBookData)
+      // );
+
+      // ✅ Doğru - Ana Redis client ile publish yapın
+      const redisClient = require('./redis');
+      await redisClient.publish(
         `orderbook:${marketId}`,
         JSON.stringify(orderBookData)
       );
+      
+      console.log(`📡 Redis'e publish edildi: orderbook:${marketId}`);
     } catch (error) {
       console.error('Redis publish hatası:', error);
     }
