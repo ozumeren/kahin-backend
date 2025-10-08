@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const db = require('../models');
 const { Market, Share, User, Transaction, Order, sequelize } = db;
 const redisClient = require('../../config/redis');
+const ApiError = require('../utils/apiError');
 
 class MarketService {
   async findAll(queryOptions = {}) {

@@ -1,18 +1,19 @@
 // src/middlewares/auth.middleware.js
 const jwt = require('jsonwebtoken');
 const User = require('../models/user.model');
+const ApiError = require('../utils/apiError');
 
 const authMiddleware = async (req, res, next) => {
-  // 1. İstek başlığından (header) token'ı al
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ message: 'Yetkilendirme başarısız: Token bulunamadı.' });
-  }
-
-  const token = authHeader.split(' ')[1];
-
   try {
+    // 1. İstek başlığından (header) token'ı al
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      throw ApiError.unauthorized('Yetkilendirme başarısız: Token bulunamadı.');
+    }
+
+    const token = authHeader.split(' ')[1];
+
     // 2. Token'ı doğrula ve içindeki kullanıcı ID'sini çöz
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
@@ -20,14 +21,15 @@ const authMiddleware = async (req, res, next) => {
     const user = await User.findByPk(decoded.id);
 
     if (!user) {
-      return res.status(401).json({ message: 'Yetkilendirme başarısız: Kullanıcı bulunamadı.' });
+      throw ApiError.unauthorized('Yetkilendirme başarısız: Kullanıcı bulunamadı.');
     }
 
-    // 4. Kullanıcı bilgisini isteğe (request) ekle, böylece sonraki adımlar bu bilgiye erişebilir
+    // 4. Kullanıcı bilgisini isteğe (request) ekle
     req.user = user;
-    next(); // Her şey yolundaysa, bir sonraki adıma (controller'a) geç
+    next();
   } catch (error) {
-    return res.status(401).json({ message: 'Yetkilendirme başarısız: Token geçersiz.' });
+    // JWT hataları ve diğer hatalar errorHandler'a iletilir
+    next(error);
   }
 };
 

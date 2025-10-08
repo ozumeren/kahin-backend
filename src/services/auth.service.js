@@ -2,6 +2,7 @@
 const { User } = require('../models');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const ApiError = require('../utils/apiError');
 
 class AuthService {
   async register(userData) {
@@ -10,7 +11,18 @@ class AuthService {
     // 1. E-posta'nın zaten var olup olmadığını kontrol et
     const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
-      throw new Error('Bu e-posta adresi zaten kullanılıyor.');
+      throw ApiError.conflict('Bu e-posta adresi zaten kullanılıyor.');
+    }
+
+    // Username kontrolü
+    const existingUsername = await User.findOne({ where: { username } });
+    if (existingUsername) {
+      throw ApiError.conflict('Bu kullanıcı adı zaten kullanılıyor.');
+    }
+
+    // Şifre uzunluk kontrolü
+    if (password.length < 6) {
+      throw ApiError.badRequest('Şifre en az 6 karakter olmalıdır.');
     }
 
     // 2. Şifreyi güvenli bir şekilde hash'le
@@ -27,27 +39,28 @@ class AuthService {
     newUser.password = undefined;
     return newUser;
   }
+
   async login(email, password) {
     // 1. Kullanıcıyı e-posta adresine göre bul
     const user = await User.findOne({ where: { email } });
     if (!user) {
-      throw new Error('E-posta veya şifre hatalı.');
+      throw ApiError.unauthorized('E-posta veya şifre hatalı.');
     }
 
     // 2. Gelen şifre ile veritabanındaki hash'lenmiş şifreyi karşılaştır
     const isPasswordMatch = await bcrypt.compare(password, user.password);
     if (!isPasswordMatch) {
-      throw new Error('E-posta veya şifre hatalı.');
+      throw ApiError.unauthorized('E-posta veya şifre hatalı.');
     }
 
     // 3. Şifre doğruysa, bir JWT oluştur
     const accessToken = jwt.sign(
       { id: user.id }, // Token'ın içine kullanıcı ID'sini koy
       process.env.JWT_SECRET, // Coolify'da belirlediğimiz gizli anahtar
-      { expiresIn: '1d' } // Token'ın geçerlilik süresi (1 gün)
+      { expiresIn: '7d' } // Token'ın geçerlilik süresi (7 gün)
     );
 
-    return { accessToken };
+    return { accessToken, user: { id: user.id, username: user.username, email: user.email, role: user.role } };
   }
 }
 
