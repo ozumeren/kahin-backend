@@ -13,7 +13,7 @@ class MarketAutomationService {
   // Otomasyonu başlat
   startAutomation() {
     if (this.isRunning) {
-      console.log('⚠️ Market otomasyonu zaten çalışıyor.');
+      console.log('Market otomasyonu zaten çalışıyor.');
       return;
     }
 
@@ -69,11 +69,11 @@ class MarketAutomationService {
       }
 
       await t.commit();
-      console.log(`✅ ${expiredMarkets.length} market başarıyla kapatıldı.`);
+      console.log(` ${expiredMarkets.length} market başarıyla kapatıldı.`);
 
     } catch (error) {
       await t.rollback();
-      console.error('❌ Market kapama otomasyonu hatası:', error);
+      console.error(' Market kapama otomasyonu hatası:', error);
     }
   }
 
@@ -82,7 +82,7 @@ class MarketAutomationService {
     const t = transaction;
 
     try {
-      console.log(`📊 Market kapatılıyor: ${market.title} (${market.id})`);
+      console.log(`Market kapatılıyor: ${market.title} (${market.id})`);
 
       // 1. Market durumunu "closed" yap
       market.status = 'closed';
@@ -101,10 +101,10 @@ class MarketAutomationService {
       // 5. WebSocket ile market kapanma bildirimi gönder
       await this.notifyMarketClosed(market.id);
 
-      console.log(`✅ Market kapatıldı: ${market.title}`);
+      console.log(`Market kapatıldı: ${market.title}`);
 
     } catch (error) {
-      console.error(`❌ Market kapatma hatası (${market.id}):`, error);
+      console.error(`Market kapatma hatası (${market.id}):`, error);
       throw error;
     }
   }
@@ -122,7 +122,7 @@ class MarketAutomationService {
       transaction: t
     });
 
-    console.log(`🔄 ${openOrders.length} adet açık emir iptal ediliyor...`);
+    console.log(`${openOrders.length} adet açık emir iptal ediliyor...`);
 
     for (const order of openOrders) {
       // BUY emirleri için para iadesi
@@ -136,7 +136,7 @@ class MarketAutomationService {
         user.balance = parseFloat(user.balance) + refundAmount;
         await user.save({ transaction: t });
 
-        console.log(`💰 BUY emir iadesi: User ${order.userId} -> ${refundAmount} TL`);
+        console.log(`BUY emir iadesi: User ${order.userId} -> ${refundAmount} TL`);
       }
 
       // SELL emirleri için hisse iadesi
@@ -162,7 +162,7 @@ class MarketAutomationService {
           await share.save({ transaction: t });
         }
 
-        console.log(`📈 SELL emir iadesi: User ${order.userId} -> ${order.quantity} hisse`);
+        console.log(`SELL emir iadesi: User ${order.userId} -> ${order.quantity} hisse`);
       }
 
       // Emri iptal et
@@ -186,9 +186,9 @@ class MarketAutomationService {
         await redisClient.del(key);
       }
 
-      console.log(`🧹 Redis order book temizlendi: ${marketId}`);
+      console.log(`Redis order book temizlendi: ${marketId}`);
     } catch (error) {
-      console.error(`❌ Redis temizleme hatası (${marketId}):`, error);
+      console.error(`Redis temizleme hatası (${marketId}):`, error);
     }
   }
 
@@ -208,9 +208,9 @@ class MarketAutomationService {
         JSON.stringify(notificationData)
       );
 
-      console.log(`📡 Market kapanma bildirimi gönderildi: ${marketId}`);
+      console.log(`Market kapanma bildirimi gönderildi: ${marketId}`);
     } catch (error) {
-      console.error(`❌ WebSocket bildirim hatası (${marketId}):`, error);
+      console.error(`WebSocket bildirim hatası (${marketId}):`, error);
     }
   }
 
@@ -237,7 +237,7 @@ class MarketAutomationService {
       await this.closeMarket(market, t);
       await t.commit();
 
-      console.log(`👨‍💼 Admin ${adminUserId} tarafından market manuel kapatıldı: ${marketId}`);
+      console.log(`Admin ${adminUserId} tarafından market manuel kapatıldı: ${marketId}`);
       
       return {
         message: 'Market başarıyla kapatıldı',
