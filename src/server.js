@@ -3,8 +3,10 @@ console.log('--- SERVER.JS DOSYASI BAŞLADI ---');
 
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
 const db = require('./models');
 const redisClient = require('../config/redis');
+const websocketServer = require('../config/websocket');
 const { errorHandler, notFoundHandler } = require('./middlewares/error.middleware');
 
 const authRoutes = require('./routes/auth.route');

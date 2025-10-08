@@ -4,6 +4,8 @@ const db = require('../models');
 const { Order, User, Market, Share, sequelize } = db;
 const redisClient = require('../../config/redis');
 const ApiError = require('../utils/apiError');
+const websocketServer = require('../../config/websocket');
+const marketService = require('./market.service');
 
 const getMarketKeys = (marketId, outcome) => {
   const outcomeString = outcome ? 'yes' : 'no';
