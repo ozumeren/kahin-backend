@@ -14,9 +14,9 @@ const userRoutes = require('./routes/user.route');
 const marketRoutes = require('./routes/market.route');
 const shareRoutes = require('./routes/share.route');
 const orderRoutes = require('./routes/order.route');
-const adminRoutes = require('./routes/admin.route');
 const transactionRoutes = require('./routes/transaction.route');
 const portfolioRoutes = require('./routes/portfolio.route');
+const adminRoutes = require('./routes/admin.route');
 const devRoutes = require('./routes/dev.route');
 
 const app = express();
@@ -44,6 +44,7 @@ app.get('/', (req, res) => {
       shares: '/api/v1/shares',
       orders: '/api/v1/orders',
       transactions: '/api/v1/transactions',
+      portfolio: '/api/v1/portfolio',
       admin: '/api/v1/admin',
       websocket: 'wss://api.kahinmarket.com/ws'
     }
@@ -57,6 +58,7 @@ app.use('/api/v1/markets', marketRoutes);
 app.use('/api/v1/shares', shareRoutes);
 app.use('/api/v1/orders', orderRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
+app.use('/api/v1/portfolio', portfolioRoutes);
 app.use('/api/v1/admin', adminRoutes);
 
 // Dev route (sadece production dışında)
