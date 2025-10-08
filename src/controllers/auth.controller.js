@@ -2,38 +2,32 @@
 const authService = require('../services/auth.service');
 
 class AuthController {
-  async register(req, res) {
-    // Gelen isteğin body'sini loglayarak verinin ulaştığından emin olalım
-    console.log('Register Controller\'a gelen body:', req.body);
+  async register(req, res, next) {
     try {
       const newUser = await authService.register(req.body);
       res.status(201).json({
+        success: true,
         message: 'Kullanıcı başarıyla oluşturuldu!',
         user: newUser
       });
     } catch (error) {
-      // Olası hataları loglayalım
-      console.error('Kayıt sırasında hata oluştu:', error.message);
-      res.status(400).json({
-        message: 'Kayıt sırasında bir hata oluştu.',
-        error: error.message
-      });
+      // Hatayı error middleware'e ilet
+      next(error);
     }
-    
   }
-  async login(req, res) {
+
+  async login(req, res, next) {
     try {
       const { email, password } = req.body;
-      const { accessToken } = await authService.login(email, password);
+      const result = await authService.login(email, password);
       res.status(200).json({
+        success: true,
         message: 'Giriş başarılı!',
-        accessToken
+        ...result
       });
     } catch (error) {
-      res.status(401).json({
-        message: 'Giriş başarısız.',
-        error: error.message
-      });
+      // Hatayı error middleware'e ilet
+      next(error);
     }
   }
 }

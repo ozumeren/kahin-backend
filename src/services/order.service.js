@@ -3,6 +3,7 @@ const { Op } = require('sequelize');
 const db = require('../models');
 const { Order, User, Market, Share, sequelize } = db;
 const redisClient = require('../../config/redis');
+const ApiError = require('../utils/apiError');
 
 const getMarketKeys = (marketId, outcome) => {
   const outcomeString = outcome ? 'yes' : 'no';
@@ -20,14 +21,18 @@ class OrderService {
 
     try {
       const market = await Market.findByPk(marketId, { transaction: t });
-      if (!market || market.status !== 'open') throw new Error('Pazar bulunamadı veya işlem için açık değil.');
+      if (!market) throw ApiError.notFound('Pazar bulunamadı.');
+      if (market.status !== 'open') throw ApiError.badRequest('Pazar işlem için açık değil.');
       
       const { bids: bidsKey, asks: asksKey } = getMarketKeys(marketId, outcome);
       
       if (type === 'BUY') {
         const buyer = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
         const totalCost = quantity * price;
-        if (buyer.balance < totalCost) throw new Error('Yetersiz bakiye.');
+        
+        if (buyer.balance < totalCost) {
+          throw ApiError.badRequest('Yetersiz bakiye.');
+        }
         
         buyer.balance -= totalCost;
         
@@ -83,7 +88,7 @@ class OrderService {
         const sellerShare = await Share.findOne({ where: { userId, marketId, outcome }, transaction: t });
 
         if (!sellerShare || sellerShare.quantity < quantity) {
-          throw new Error('Satmak için yeterli hisseniz yok.');
+          throw ApiError.badRequest('Satmak için yeterli hisseniz yok.');
         }
 
         sellerShare.quantity -= quantity;
@@ -142,7 +147,7 @@ class OrderService {
       const newOrder = await Order.findOne({ where: {userId, marketId, type, outcome, status: 'OPEN'} });
       if (newOrder) {
         newOrder.quantity += quantity;
-        newOrder.price = price; // Fiyatı son emirle güncelle
+        newOrder.price = price;
         await newOrder.save();
         await redisClient.zAdd(type === 'BUY' ? bidsKey : asksKey, { score: price, value: `${newOrder.id}:${newOrder.quantity}` }, { XX: true });
         return { message: "Açık emriniz güncellendi.", order: newOrder};

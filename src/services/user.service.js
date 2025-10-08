@@ -1,6 +1,7 @@
 // src/services/user.service.js
 const { User, Share, Market } = require('../models');
 const { Op } = require('sequelize');
+const ApiError = require('../utils/apiError');
 
 class UserService {
   // Bir kullanıcıyı, sahip olduğu hisseler ve o hisselerin ait olduğu pazarlarla birlikte getirir

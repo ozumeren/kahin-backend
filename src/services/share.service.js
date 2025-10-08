@@ -1,6 +1,7 @@
 // src/services/share.service.js
 const db = require('../models');
-const { User, Market, Share } = db; // Transaction'ı buradan kaldırdık
+const { User, Market, Share } = db;
+const ApiError = require('../utils/apiError');
 
 class ShareService {
   async purchase(userId, marketId, outcome, quantity) {
@@ -10,21 +11,21 @@ class ShareService {
     try {
       // --- KONTROLLER ---
       if (quantity <= 0) {
-        throw new Error('Miktar 0\'dan büyük olmalıdır.');
+        throw ApiError.badRequest('Miktar 0\'dan büyük olmalıdır.');
       }
 
-      const market = await Market.findByPk(marketId, { lock: t.LOCK.UPDATE });
-      const user = await User.findByPk(userId, { lock: t.LOCK.UPDATE });
+      const market = await Market.findByPk(marketId, { lock: t.LOCK.UPDATE, transaction: t });
+      const user = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
 
-      if (!market) throw new Error('Pazar bulunamadı.');
-      if (market.status !== 'open') throw new Error('Bu pazar artık bahise açık değil.');
-      if (!user) throw new Error('Kullanıcı bulunamadı.');
+      if (!market) throw ApiError.notFound('Pazar bulunamadı.');
+      if (market.status !== 'open') throw ApiError.badRequest('Bu pazar artık bahise açık değil.');
+      if (!user) throw ApiError.notFound('Kullanıcı bulunamadı.');
 
       // Basit bir fiyatlandırma: Her hisse 1 TL.
       const totalCost = quantity * 1.00;
 
       if (user.balance < totalCost) {
-        throw new Error('Yetersiz bakiye.');
+        throw ApiError.badRequest('Yetersiz bakiye.');
       }
 
       // --- İŞLEMLER ---
