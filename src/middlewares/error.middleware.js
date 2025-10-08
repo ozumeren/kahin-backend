@@ -8,13 +8,36 @@ const handleSequelizeError = (err) => {
   // Unique constraint hatası
   if (err.name === 'SequelizeUniqueConstraintError') {
     const field = err.errors[0]?.path || 'alan';
-    message = `Bu ${field} zaten kullanılıyor.`;
+    const fieldNames = {
+      email: 'E-posta adresi',
+      username: 'Kullanıcı adı'
+    };
+    const friendlyField = fieldNames[field] || field;
+    message = `${friendlyField} zaten kullanılıyor.`;
     return ApiError.conflict(message);
   }
   
   // Validation hatası
   if (err.name === 'SequelizeValidationError') {
-    message = err.errors.map(e => e.message).join(', ');
+    // Email validation hatası özel mesaj
+    const errors = err.errors.map(e => {
+      if (e.validatorKey === 'isEmail') {
+        return 'Geçerli bir e-posta adresi giriniz.';
+      }
+      if (e.validatorKey === 'notNull' || e.validatorKey === 'notEmpty') {
+        const fieldNames = {
+          email: 'E-posta',
+          username: 'Kullanıcı adı',
+          password: 'Şifre',
+          title: 'Başlık',
+          closing_date: 'Kapanış tarihi'
+        };
+        const friendlyField = fieldNames[e.path] || e.path;
+        return `${friendlyField} zorunludur.`;
+      }
+      return e.message;
+    });
+    message = errors.join(', ');
     return ApiError.badRequest(message);
   }
   
