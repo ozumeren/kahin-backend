@@ -1,7 +1,7 @@
 // src/services/order.service.js
 const { Op } = require('sequelize');
 const db = require('../models');
-const { Order, User, Market, Share, sequelize } = db;
+const { Order, User, Market, Share, Transaction, sequelize } = db;
 const redisClient = require('../../config/redis');
 const ApiError = require('../utils/apiError');
 const websocketServer = require('../../config/websocket');
