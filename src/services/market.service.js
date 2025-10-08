@@ -14,7 +14,7 @@ class MarketService {
   async findById(marketId) {
     const market = await Market.findByPk(marketId);
     if (!market) {
-      throw new Error('Pazar bulunamadı.');
+      throw ApiError.notFound('Pazar bulunamadı.');
     }
     return market;
   }
@@ -23,7 +23,7 @@ class MarketService {
     const { title, description, closing_date } = marketData;
 
     if (!title || !closing_date) {
-      throw new Error('Başlık ve kapanış tarihi zorunludur.');
+      throw ApiError.badRequest('Başlık ve kapanış tarihi zorunludur.');
     }
 
     const newMarket = await Market.create({
@@ -40,15 +40,15 @@ class MarketService {
     const market = await Market.findByPk(marketId);
     
     if (!market) {
-      throw new Error('Pazar bulunamadı.');
+      throw ApiError.notFound('Pazar bulunamadı.');
     }
 
     if (market.status === 'resolved') {
-      throw new Error('Sonuçlanmış pazar kapatılamaz.');
+      throw ApiError.badRequest('Sonuçlanmış pazar kapatılamaz.');
     }
 
     if (market.status === 'closed') {
-      throw new Error('Bu pazar zaten kapalı.');
+      throw ApiError.conflict('Bu pazar zaten kapalı.');
     }
 
     market.status = 'closed';
@@ -69,16 +69,16 @@ class MarketService {
 
       // Kontroller
       if (!market) {
-        throw new Error('Pazar bulunamadı.');
+        throw ApiError.notFound('Pazar bulunamadı.');
       }
 
       if (market.status === 'resolved') {
-        throw new Error('Bu pazar zaten sonuçlandırılmış.');
+        throw ApiError.conflict('Bu pazar zaten sonuçlandırılmış.');
       }
 
       // Outcome boolean olmalı (true veya false)
       if (typeof finalOutcome !== 'boolean') {
-        throw new Error('Sonuç true (Evet) veya false (Hayır) olmalıdır.');
+        throw ApiError.badRequest('Sonuç true (Evet) veya false (Hayır) olmalıdır.');
       }
 
       // 2. Pazarı güncelle
@@ -183,6 +183,131 @@ class MarketService {
       console.error('Pazar sonuçlandırma hatası:', error);
       throw error;
     }
+  }
+
+  async getOrderBook(marketId) {
+    // 1. Market'in var olduğunu kontrol et
+    const market = await Market.findByPk(marketId);
+    if (!market) {
+      throw ApiError.notFound('Pazar bulunamadı.');
+    }
+
+    // 2. Redis'ten order book verilerini çek
+    const orderBook = {
+      marketId: market.id,
+      marketTitle: market.title,
+      marketStatus: market.status,
+      timestamp: new Date().toISOString(),
+      yes: {
+        bids: [],  // Alış emirleri (YES'e yatırım yapanlar)
+        asks: []   // Satış emirleri (YES satanlar)
+      },
+      no: {
+        bids: [],  // Alış emirleri (NO'ya yatırım yapanlar)
+        asks: []   // Satış emirleri (NO satanlar)
+      }
+    };
+
+    // 3. Her outcome için Redis anahtarları
+    const outcomes = [
+      { outcome: 'yes', value: true },
+      { outcome: 'no', value: false }
+    ];
+
+    for (const { outcome, value } of outcomes) {
+      // Bids (Alış emirleri) - Fiyata göre azalan sırada
+      const bidsKey = `market:${marketId}:${outcome}:bids`;
+      const bidsData = await redisClient.zRangeWithScores(bidsKey, 0, -1, { REV: true });
+      
+      // Asks (Satış emirleri) - Fiyata göre artan sırada
+      const asksKey = `market:${marketId}:${outcome}:asks`;
+      const asksData = await redisClient.zRangeWithScores(asksKey, 0, -1);
+
+      // 4. Bids'i grupla ve formatla (aynı fiyattaki emirleri topla)
+      const bidsMap = new Map();
+      for (const item of bidsData) {
+        const [orderId, quantity] = item.value.split(':');
+        const price = item.score;
+        const currentQty = bidsMap.get(price) || 0;
+        bidsMap.set(price, currentQty + parseInt(quantity));
+      }
+
+      // Map'i array'e çevir ve formatla
+      orderBook[outcome].bids = Array.from(bidsMap.entries())
+        .map(([price, quantity]) => ({
+          price: parseFloat(price).toFixed(2),
+          quantity: quantity,
+          total: (price * quantity).toFixed(2)
+        }))
+        .sort((a, b) => parseFloat(b.price) - parseFloat(a.price)); // Yüksek fiyattan düşüğe
+
+      // 5. Asks'i grupla ve formatla
+      const asksMap = new Map();
+      for (const item of asksData) {
+        const [orderId, quantity] = item.value.split(':');
+        const price = item.score;
+        const currentQty = asksMap.get(price) || 0;
+        asksMap.set(price, currentQty + parseInt(quantity));
+      }
+
+      orderBook[outcome].asks = Array.from(asksMap.entries())
+        .map(([price, quantity]) => ({
+          price: parseFloat(price).toFixed(2),
+          quantity: quantity,
+          total: (price * quantity).toFixed(2)
+        }))
+        .sort((a, b) => parseFloat(a.price) - parseFloat(b.price)); // Düşük fiyattan yükseğe
+    }
+
+    // 6. Order book derinliği ve spread hesapla
+    const yesSpread = this.calculateSpread(orderBook.yes.bids, orderBook.yes.asks);
+    const noSpread = this.calculateSpread(orderBook.no.bids, orderBook.no.asks);
+
+    // 7. Mid price hesapla (best bid + best ask) / 2
+    orderBook.yes.midPrice = this.calculateMidPrice(orderBook.yes.bids, orderBook.yes.asks);
+    orderBook.no.midPrice = this.calculateMidPrice(orderBook.no.bids, orderBook.no.asks);
+
+    // 8. Spread bilgisi
+    orderBook.yes.spread = yesSpread;
+    orderBook.no.spread = noSpread;
+
+    // 9. Likidite derinliği (toplam miktar)
+    orderBook.yes.depth = {
+      bidDepth: orderBook.yes.bids.reduce((sum, bid) => sum + bid.quantity, 0),
+      askDepth: orderBook.yes.asks.reduce((sum, ask) => sum + ask.quantity, 0)
+    };
+    orderBook.no.depth = {
+      bidDepth: orderBook.no.bids.reduce((sum, bid) => sum + bid.quantity, 0),
+      askDepth: orderBook.no.asks.reduce((sum, ask) => sum + ask.quantity, 0)
+    };
+
+    return orderBook;
+  }
+
+  calculateSpread(bids, asks) {
+    if (bids.length === 0 || asks.length === 0) {
+      return null;
+    }
+    const bestBid = parseFloat(bids[0].price);
+    const bestAsk = parseFloat(asks[0].price);
+    const spread = bestAsk - bestBid;
+    const spreadPercent = ((spread / bestBid) * 100).toFixed(2);
+    
+    return {
+      absolute: spread.toFixed(2),
+      percentage: spreadPercent,
+      bestBid: bestBid.toFixed(2),
+      bestAsk: bestAsk.toFixed(2)
+    };
+  }
+
+  calculateMidPrice(bids, asks) {
+    if (bids.length === 0 || asks.length === 0) {
+      return null;
+    }
+    const bestBid = parseFloat(bids[0].price);
+    const bestAsk = parseFloat(asks[0].price);
+    return ((bestBid + bestAsk) / 2).toFixed(2);
   }
 }
 

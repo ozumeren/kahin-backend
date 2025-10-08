@@ -3,7 +3,7 @@ const marketService = require('../services/market.service');
 
 class MarketController {
   // Tüm pazarları listele (Public)
-  async getMarkets(req, res) {
+  async getMarkets(req, res, next) {
     try {
       // Query parametrelerinden filtreleme al
       const filters = {};
@@ -12,33 +12,43 @@ class MarketController {
       }
 
       const markets = await marketService.findAll(filters);
-      res.status(200).json(markets);
-    } catch (error) {
-      res.status(500).json({ 
-        message: 'Pazarlar getirilirken bir hata oluştu.', 
-        error: error.message 
+      res.status(200).json({
+        success: true,
+        count: markets.length,
+        data: markets
       });
+    } catch (error) {
+      next(error);
     }
   }
 
   // Tek bir pazarın detayını getir (Public)
-  async getMarketById(req, res) {
+  async getMarketById(req, res, next) {
     try {
       const { id } = req.params;
       const market = await marketService.findById(id);
-      res.status(200).json(market);
-    } catch (error) {
-      if (error.message === 'Pazar bulunamadı.') {
-        return res.status(404).json({ message: error.message });
-      }
-      res.status(500).json({ 
-        message: 'Pazar getirilirken bir hata oluştu.', 
-        error: error.message 
+      res.status(200).json({
+        success: true,
+        data: market
       });
+    } catch (error) {
+      next(error);
     }
   }
 
-  // NOT: createMarket fonksiyonu artık admin.controller.js'te
+  // Order book'u getir (Public) - Kalshi/Polymarket standardı
+  async getOrderBook(req, res, next) {
+    try {
+      const { id } = req.params;
+      const orderBook = await marketService.getOrderBook(id);
+      res.status(200).json({
+        success: true,
+        data: orderBook
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new MarketController();
