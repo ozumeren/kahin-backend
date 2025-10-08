@@ -18,6 +18,7 @@ const adminRoutes = require('./routes/admin.route');
 const devRoutes = require('./routes/dev.route');
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
@@ -40,7 +41,8 @@ app.get('/', (req, res) => {
       markets: '/api/v1/markets',
       shares: '/api/v1/shares',
       orders: '/api/v1/orders',
-      admin: '/api/v1/admin'
+      admin: '/api/v1/admin',
+      websocket: 'wss://api.kahinmarket.com/ws'
     }
   });
 });
@@ -70,15 +72,19 @@ async function startServer() {
     await redisClient.connect();
     console.log('✓ Redis bağlantısı başarıyla kuruldu.');
 
+    // WebSocket sunucusunu başlat
+    await websocketServer.initialize(server);
+
     // Sonra veritabanını senkronize et
     await db.sequelize.sync({ alter: true });
     console.log('✓ Veritabanı senkronizasyonu başarılı.');
 
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`✓ Sunucu ${PORT} portunda başlatıldı.`);
+      console.log(`✓ HTTP Sunucu ${PORT} portunda başlatıldı.`);
+      console.log(`✓ WebSocket: wss://api.kahinmarket.com/ws`);
       console.log(`✓ Ortam: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`✓ API Base URL: http://localhost:${PORT}/api/v1`);
+      console.log(`✓ API Base URL: https://api.kahinmarket.com/api/v1`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     });
   } catch (error) {
@@ -90,7 +96,6 @@ async function startServer() {
 // Beklenmeyen hataları yakala
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  // Uygulamayı kapat (production'da restart mekanizması olmalı)
   process.exit(1);
 });
 
