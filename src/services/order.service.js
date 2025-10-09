@@ -42,14 +42,9 @@ class OrderService {
         buyer.balance -= totalCost;
         await buyer.save({ transaction: t });
 
-        // Transaction kaydı
-        await Transaction.create({
-          userId,
-          marketId,
-          type: 'bet',
-          amount: -totalCost,
-          description: `${outcome ? 'YES' : 'NO'} için ${quantity} adet BUY emri (fiyat: ${price})`
-        }, { transaction: t });
+        // *** DÜZELTME: İlk transaction'ı eşleşme sonrası oluştur ***
+        // Bu değişkeni eşleşme sonuçlarını takip etmek için kullanalım
+        let actualSpent = 0;
         
         // Eşleşme kontrolü
         const matchingSellOrders = await redisClient.zRangeWithScores(asksKey, 0, -1);
@@ -62,12 +57,16 @@ class OrderService {
           
           if (sellPrice <= price) {
             const tradeQuantity = Math.min(quantity, sellerOrderQuantity);
-            const tradeTotal = tradeQuantity * sellPrice; // ✅ Doğru - satış fiyatı
+            const tradeTotal = tradeQuantity * sellPrice; // Gerçek ödenen miktar
+            
+            // Gerçek harcamayı kaydet
+            actualSpent += tradeTotal;
 
-            // Fiyat farkı iadesi - Bu kısım doğru
+            // Fiyat farkı iadesi
             const priceDifference = price - sellPrice;
             if (priceDifference > 0) {
-              buyer.balance += tradeQuantity * priceDifference;
+              const refundAmount = tradeQuantity * priceDifference;
+              buyer.balance += refundAmount;
               await buyer.save({ transaction: t });
             }
             
@@ -83,7 +82,7 @@ class OrderService {
               marketId,
               type: 'payout',
               amount: tradeTotal,
-              description: `${tradeQuantity} adet ${outcome ? 'YES' : 'NO'} hissesi satışı (fiyat: ${sellPrice})` // ✅ Bu doğru
+              description: `${tradeQuantity} adet ${outcome ? 'YES' : 'NO'} hissesi satışı (fiyat: ${sellPrice})`
             }, { transaction: t });
 
             // Hisse transferleri
@@ -132,6 +131,29 @@ class OrderService {
               );
             }
           }
+        }
+
+        // *** DÜZELTME: Gerçek harcanan miktarla transaction oluştur ***
+        if (actualSpent > 0) {
+          await Transaction.create({
+            userId,
+            marketId,
+            type: 'bet',
+            amount: -actualSpent, // Gerçek ödenen miktar
+            description: `${initialQuantity - quantity} adet ${outcome ? 'YES' : 'NO'} hisse alımı (ortalama fiyat: ${(actualSpent / (initialQuantity - quantity)).toFixed(3)})`
+          }, { transaction: t });
+        }
+
+        // Eğer kalan miktar varsa onun için ayrı transaction
+        if (quantity > 0) {
+          const remainingCost = quantity * price;
+          await Transaction.create({
+            userId,
+            marketId,
+            type: 'bet',
+            amount: -remainingCost,
+            description: `${quantity} adet ${outcome ? 'YES' : 'NO'} için BUY emri (fiyat: ${price}) - Defterde bekliyor`
+          }, { transaction: t });
         }
 
       } else if (type === 'SELL') {

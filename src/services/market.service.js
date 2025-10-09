@@ -58,132 +58,196 @@ class MarketService {
   }
 
   async resolveMarket(marketId, finalOutcome) {
-    const t = await sequelize.transaction();
-    
-    try {
-      // 1. Pazarı bul ve kilitle
-      const market = await Market.findByPk(marketId, { 
+  const t = await sequelize.transaction();
+  
+  try {
+    // 1. Pazarı bul ve kilitle
+    const market = await Market.findByPk(marketId, { 
+      lock: t.LOCK.UPDATE, 
+      transaction: t 
+    });
+
+    // Kontroller (aynı...)
+    if (!market) {
+      throw ApiError.notFound('Pazar bulunamadı.');
+    }
+
+    if (market.status === 'resolved') {
+      throw ApiError.conflict('Bu pazar zaten sonuçlandırılmış.');
+    }
+
+    if (typeof finalOutcome !== 'boolean') {
+      throw ApiError.badRequest('Sonuç true (Evet) veya false (Hayır) olmalıdır.');
+    }
+
+    // 2. Pazarı güncelle
+    market.status = 'resolved';
+    market.outcome = finalOutcome;
+    await market.save({ transaction: t });
+
+    // *** DÜZELTME: Tüm açık emirleri iptal et ve para/hisse iadesi yap ***
+    const openOrders = await Order.findAll({
+      where: { marketId, status: 'OPEN' },
+      transaction: t
+    });
+
+    console.log(`📋 ${openOrders.length} açık emir iptal ediliyor...`);
+
+    for (const order of openOrders) {
+      console.log(`İptal edilen emir: ${order.type} ${order.quantity} adet ${order.outcome ? 'YES' : 'NO'} @ ${order.price}`);
+      
+      // Redis'ten sil
+      const outcomeString = order.outcome ? 'yes' : 'no';
+      const orderKey = order.type === 'BUY' ? 'bids' : 'asks';
+      const redisKey = `market:${marketId}:${outcomeString}:${orderKey}`;
+      
+      // Redis'teki tüm değerleri kontrol et ve bu emri sil
+      const allOrders = await redisClient.zRangeWithScores(redisKey, 0, -1);
+      for (const redisOrder of allOrders) {
+        if (redisOrder.value.startsWith(`${order.id}:`)) {
+          await redisClient.zRem(redisKey, redisOrder.value);
+          console.log(`Redis'ten silindi: ${redisKey} -> ${redisOrder.value}`);
+        }
+      }
+
+      // *** DÜZELTME: Para/hisse iadesi ***
+      if (order.type === 'BUY') {
+        // BUY emri için para iadesi
+        const user = await User.findByPk(order.userId, { 
+          lock: t.LOCK.UPDATE, 
+          transaction: t 
+        });
+        
+        const refundAmount = parseFloat(order.quantity) * parseFloat(order.price);
+        user.balance = parseFloat(user.balance) + refundAmount;
+        await user.save({ transaction: t });
+
+        await Transaction.create({
+          userId: order.userId,
+          marketId: order.marketId,
+          type: 'refund',
+          amount: refundAmount,
+          description: `Market sonuçlandı - BUY emri iptal: ${order.quantity} x ${order.price} = ${refundAmount} TL iade`
+        }, { transaction: t });
+
+        console.log(`💰 BUY emir iadesi: User ${order.userId} -> ${refundAmount} TL`);
+      }
+
+      if (order.type === 'SELL') {
+        // SELL emri için hisse iadesi
+        let share = await Share.findOne({
+          where: { 
+            userId: order.userId, 
+            marketId: order.marketId, 
+            outcome: order.outcome 
+          },
+          transaction: t
+        });
+
+        if (!share) {
+          // Hisse kaydı yoksa oluştur
+          share = await Share.create({
+            userId: order.userId,
+            marketId: order.marketId,
+            outcome: order.outcome,
+            quantity: order.quantity
+          }, { transaction: t });
+        } else {
+          // Mevcut hisseye ekle
+          share.quantity = parseInt(share.quantity) + parseInt(order.quantity);
+          await share.save({ transaction: t });
+        }
+
+        await Transaction.create({
+          userId: order.userId,
+          marketId: order.marketId,
+          type: 'refund',
+          amount: 0,
+          description: `Market sonuçlandı - SELL emri iptal: ${order.quantity} adet ${order.outcome ? 'YES' : 'NO'} hisse iade`
+        }, { transaction: t });
+
+        console.log(`📈 SELL emir iadesi: User ${order.userId} -> ${order.quantity} adet ${order.outcome ? 'YES' : 'NO'} hisse`);
+      }
+
+      // Emri iptal et
+      order.status = 'CANCELLED';
+      await order.save({ transaction: t });
+    }
+
+    // 4. Kazanan hisseleri bul
+    const winningShares = await Share.findAll({
+      where: { marketId, outcome: finalOutcome },
+      transaction: t
+    });
+
+    if (winningShares.length === 0) {
+      await t.commit();
+      return { 
+        message: 'Pazar sonuçlandırıldı, ancak kazanan hisse bulunamadı.',
+        resolvedMarket: market,
+        cancelledOrders: openOrders.length
+      };
+    }
+
+    // 5. Kazançları hesapla ve dağıt
+    let totalPayout = 0;
+    const payoutDetails = [];
+
+    for (const share of winningShares) {
+      const payoutAmount = parseFloat(share.quantity) * 1.00;
+      
+      // Kullanıcıyı bul ve kilitle
+      const winner = await User.findByPk(share.userId, { 
         lock: t.LOCK.UPDATE, 
         transaction: t 
       });
 
-      // Kontroller
-      if (!market) {
-        throw ApiError.notFound('Pazar bulunamadı.');
+      if (!winner) {
+        console.warn(`Kullanıcı bulunamadı: ${share.userId}`);
+        continue;
       }
 
-      if (market.status === 'resolved') {
-        throw ApiError.conflict('Bu pazar zaten sonuçlandırılmış.');
-      }
+      // Bakiyeyi artır
+      winner.balance = parseFloat(winner.balance) + payoutAmount;
+      await winner.save({ transaction: t });
 
-      // Outcome boolean olmalı (true veya false)
-      if (typeof finalOutcome !== 'boolean') {
-        throw ApiError.badRequest('Sonuç true (Evet) veya false (Hayır) olmalıdır.');
-      }
+      // Transaction kaydı oluştur
+      await Transaction.create({
+        userId: winner.id,
+        marketId: market.id,
+        type: 'payout',
+        amount: payoutAmount,
+        description: `Pazar "${market.title}" sonucundan kazanılan ödeme. ${share.quantity} adet kazanan hisse.`
+      }, { transaction: t });
 
-      // 2. Pazarı güncelle
-      market.status = 'resolved';
-      market.outcome = finalOutcome;
-      await market.save({ transaction: t });
-
-      // 3. Tüm açık emirleri iptal et ve Redis'ten temizle
-      const openOrders = await Order.findAll({
-        where: { marketId, status: 'OPEN' },
-        transaction: t
+      totalPayout += payoutAmount;
+      payoutDetails.push({
+        userId: winner.id,
+        username: winner.username,
+        shares: share.quantity,
+        payout: payoutAmount
       });
-
-      for (const order of openOrders) {
-        // Redis'ten sil
-        const outcomeString = order.outcome ? 'yes' : 'no';
-        const orderKey = order.type === 'BUY' ? 'bids' : 'asks';
-        const redisKey = `market:${marketId}:${outcomeString}:${orderKey}`;
-        
-        // Redis'teki tüm değerleri kontrol et ve bu emri sil
-        const allOrders = await redisClient.zRangeWithScores(redisKey, 0, -1);
-        for (const redisOrder of allOrders) {
-          if (redisOrder.value.startsWith(`${order.id}:`)) {
-            await redisClient.zRem(redisKey, redisOrder.value);
-          }
-        }
-
-        // Veritabanında iptal et
-        order.status = 'CANCELLED';
-        await order.save({ transaction: t });
-      }
-
-      // 4. Kazanan hisseleri bul
-      const winningShares = await Share.findAll({
-        where: { marketId, outcome: finalOutcome },
-        transaction: t
-      });
-
-      if (winningShares.length === 0) {
-        await t.commit();
-        return { 
-          message: 'Pazar sonuçlandırıldı, ancak kazanan hisse bulunamadı.',
-          resolvedMarket: market 
-        };
-      }
-
-      // 5. Kazançları hesapla ve dağıt
-      let totalPayout = 0;
-      const payoutDetails = [];
-
-      for (const share of winningShares) {
-        const payoutAmount = parseFloat(share.quantity) * 1.00;
-        
-        // Kullanıcıyı bul ve kilitle
-        const winner = await User.findByPk(share.userId, { 
-          lock: t.LOCK.UPDATE, 
-          transaction: t 
-        });
-
-        if (!winner) {
-          console.warn(`Kullanıcı bulunamadı: ${share.userId}`);
-          continue;
-        }
-
-        // Bakiyeyi artır
-        winner.balance = parseFloat(winner.balance) + payoutAmount;
-        await winner.save({ transaction: t });
-
-        // Transaction kaydı oluştur
-        await Transaction.create({
-          userId: winner.id,
-          marketId: market.id,
-          type: 'payout',
-          amount: payoutAmount,
-          description: `Pazar "${market.title}" sonucundan kazanılan ödeme. ${share.quantity} adet kazanan hisse.`
-        }, { transaction: t });
-
-        totalPayout += payoutAmount;
-        payoutDetails.push({
-          userId: winner.id,
-          username: winner.username,
-          shares: share.quantity,
-          payout: payoutAmount
-        });
-      }
-
-      await t.commit();
-
-      return {
-        message: 'Pazar başarıyla sonuçlandırıldı ve ödemeler yapıldı.',
-        resolvedMarket: market,
-        stats: {
-          totalWinners: winningShares.length,
-          totalPayout: totalPayout,
-          cancelledOrders: openOrders.length
-        },
-        payoutDetails
-      };
-
-    } catch (error) {
-      await t.rollback();
-      console.error('Pazar sonuçlandırma hatası:', error);
-      throw error;
     }
+
+    await t.commit();
+
+    return {
+      message: 'Pazar başarıyla sonuçlandırıldı ve ödemeler yapıldı.',
+      resolvedMarket: market,
+      stats: {
+        totalWinners: winningShares.length,
+        totalPayout: totalPayout,
+        cancelledOrders: openOrders.length
+      },
+      payoutDetails
+    };
+
+  } catch (error) {
+    await t.rollback();
+    console.error('Pazar sonuçlandırma hatası:', error);
+    throw error;
   }
+}
 
   async getOrderBook(marketId) {
     // 1. Market'in var olduğunu kontrol et
