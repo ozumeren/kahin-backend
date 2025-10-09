@@ -1,7 +1,7 @@
 // src/services/order.service.js
 const { Op } = require('sequelize');
 const db = require('../models');
-const { Order, User, Market, Share, Transaction, sequelize } = db;
+const { Order, User, Market, Share, Transaction, Trade, sequelize } = db;
 const redisClient = require('../../config/redis');
 const ApiError = require('../utils/apiError');
 const websocketServer = require('../../config/websocket');
@@ -29,6 +29,9 @@ class OrderService {
       
       const { bids: bidsKey, asks: asksKey } = getMarketKeys(marketId, outcome);
       
+      // ✅ YENİ: Eğer BUY emri varsa, önce order oluştur
+      let newBuyOrder = null;
+      
       // ========== PHASE 2: ORDER PROCESSING ==========
       if (type === 'BUY') {
         const buyer = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
@@ -41,6 +44,17 @@ class OrderService {
         // Para çek
         buyer.balance -= totalCost;
         await buyer.save({ transaction: t });
+
+        // ✅ YENİ: Önce BUY order'ı oluştur (eşleşme öncesi)
+        newBuyOrder = await Order.create({ 
+          userId, 
+          marketId, 
+          type: 'BUY', 
+          outcome, 
+          quantity, 
+          price, 
+          status: 'OPEN' 
+        }, { transaction: t });
 
         let actualSpent = 0;
         
@@ -73,6 +87,22 @@ class OrderService {
             seller.balance = parseFloat(seller.balance) + tradeTotal;
             await seller.save({ transaction: t });
 
+            // ✅ DÜZELTME: Artık doğru order ID'leri kullanıyoruz
+            await Trade.create({
+              buyerId: buyer.id,
+              buyOrderId: newBuyOrder.id, // ✅ Doğru order ID
+              sellerId: seller.id,
+              sellOrderId: sellerOrderId, // ✅ Doğru order ID
+              marketId,
+              outcome,
+              quantity: tradeQuantity,
+              price: sellPrice,
+              total: tradeTotal,
+              tradeType: 'LIMIT'
+            }, { transaction: t });
+
+            console.log(`✅ Trade kaydı oluşturuldu: ${tradeQuantity} adet @ ${sellPrice} TL`);
+
             // Satıcı transaction
             await Transaction.create({
               userId: seller.id,
@@ -92,9 +122,6 @@ class OrderService {
             
             buyerShare.quantity += tradeQuantity;
             await buyerShare.save({ transaction: t });
-            
-            // ✅ DÜZELTİLDİ: Satıcının hissesi zaten kilitliydi, ekstra işlem yapmaya gerek yok
-            // Hisse zaten SELL emri oluşturulurken kilitlendiydi
             
             // Redis güncelle
             quantity -= tradeQuantity;
@@ -119,6 +146,24 @@ class OrderService {
           }
         }
 
+        // ✅ YENİ: BUY order'ın durumunu güncelle
+        if (quantity === 0) {
+          // Tamamen eşleşti
+          newBuyOrder.status = 'FILLED';
+          newBuyOrder.quantity = 0;
+          await newBuyOrder.save({ transaction: t });
+        } else {
+          // Kısmen eşleşti veya hiç eşleşmedi
+          newBuyOrder.quantity = quantity;
+          await newBuyOrder.save({ transaction: t });
+          
+          // Redis'e ekle
+          await redisClient.zAdd(bidsKey, { 
+            score: price, 
+            value: `${newBuyOrder.id}:${quantity}` 
+          });
+        }
+
         if (actualSpent > 0) {
           await Transaction.create({
             userId,
@@ -141,7 +186,6 @@ class OrderService {
         }
 
       } else if (type === 'SELL') {
-        // ========== ✅ DÜZELTİLMİŞ SELL MANTĞI ==========
         const seller = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
         const sellerShare = await Share.findOne({ 
           where: { userId, marketId, outcome }, 
@@ -153,7 +197,6 @@ class OrderService {
           throw ApiError.badRequest('Satmak için yeterli hisseniz yok.');
         }
 
-        // ✅ ÖNEMLİ: SELL emri oluşturulurken hisseyi HEMEN kilitle
         console.log(`🔒 SELL emri oluşturuluyor - Mevcut hisse: ${sellerShare.quantity}, Satılacak: ${quantity}`);
         
         sellerShare.quantity -= quantity;
@@ -161,13 +204,22 @@ class OrderService {
         
         console.log(`🔒 Hisse kilitlendi - Kalan hisse: ${sellerShare.quantity}`);
 
-        // Eğer hisse sayısı 0 olduysa kaydı sil
         if (sellerShare.quantity === 0) {
           await sellerShare.destroy({ transaction: t });
           console.log(`🗑️ Hisse kaydı silindi (quantity = 0)`);
         }
 
-        // Transaction kaydı
+        // ✅ YENİ: Önce SELL order'ı oluştur (eşleşme öncesi)
+        const newSellOrder = await Order.create({ 
+          userId, 
+          marketId, 
+          type: 'SELL', 
+          outcome, 
+          quantity, 
+          price, 
+          status: 'OPEN' 
+        }, { transaction: t });
+
         await Transaction.create({
           userId,
           marketId,
@@ -195,6 +247,29 @@ class OrderService {
             seller.balance = parseFloat(seller.balance) + tradeTotal;
             await seller.save({ transaction: t });
 
+            // Alıcı işlemleri
+            const buyOrder = await Order.findByPk(buyerOrderId, { transaction: t });
+            const buyer = await User.findByPk(buyOrder.userId, { 
+              lock: t.LOCK.UPDATE, 
+              transaction: t 
+            });
+
+            // ✅ DÜZELTME: Artık doğru order ID'leri kullanıyoruz
+            await Trade.create({
+              buyerId: buyer.id,
+              buyOrderId: buyerOrderId, // ✅ Doğru order ID
+              sellerId: seller.id,
+              sellOrderId: newSellOrder.id, // ✅ Doğru order ID
+              marketId,
+              outcome,
+              quantity: tradeQuantity,
+              price: buyPrice,
+              total: tradeTotal,
+              tradeType: 'LIMIT'
+            }, { transaction: t });
+
+            console.log(`✅ Trade kaydı oluşturuldu: ${tradeQuantity} adet @ ${buyPrice} TL`);
+
             // Satıcı transaction
             await Transaction.create({
               userId: seller.id,
@@ -203,13 +278,6 @@ class OrderService {
               amount: tradeTotal,
               description: `${tradeQuantity} adet ${outcome ? 'YES' : 'NO'} hissesi satışı (fiyat: ${buyPrice})`
             }, { transaction: t });
-
-            // Alıcı işlemleri
-            const buyOrder = await Order.findByPk(buyerOrderId, { transaction: t });
-            const buyer = await User.findByPk(buyOrder.userId, { 
-              lock: t.LOCK.UPDATE, 
-              transaction: t 
-            });
             
             const buyerShare = await Share.findOne({ 
               where: { userId: buyer.id, marketId, outcome }, 
@@ -251,50 +319,26 @@ class OrderService {
             }
           }
         }
+
+        // ✅ YENİ: SELL order'ın durumunu güncelle
+        if (quantity === 0) {
+          // Tamamen eşleşti
+          newSellOrder.status = 'FILLED';
+          newSellOrder.quantity = 0;
+          await newSellOrder.save({ transaction: t });
+        } else {
+          // Kısmen eşleşti veya hiç eşleşmedi
+          newSellOrder.quantity = quantity;
+          await newSellOrder.save({ transaction: t });
+          
+          // Redis'e ekle
+          await redisClient.zAdd(asksKey, { 
+            score: price, 
+            value: `${newSellOrder.id}:${quantity}` 
+          });
+        }
         
         console.log(`✅ SELL eşleşmesi tamamlandı - Eşleşen: ${initialSellQuantity - quantity}, Kalan: ${quantity}`);
-      }
-
-      // ========== PHASE 3: HANDLE REMAINING QUANTITY ==========
-      let resultMessage;
-      let remainingOrder = null;
-
-      if (quantity === 0) {
-        resultMessage = "Emir tamamen eşleşti ve tamamlandı.";
-      } else {
-        const existingOrder = await Order.findOne({ 
-          where: { userId, marketId, type, outcome, status: 'OPEN' },
-          transaction: t
-        });
-
-        if (existingOrder) {
-          existingOrder.quantity += quantity;
-          existingOrder.price = price;
-          await existingOrder.save({ transaction: t });
-          
-          await redisClient.zAdd(
-            type === 'BUY' ? bidsKey : asksKey, 
-            { score: price, value: `${existingOrder.id}:${existingOrder.quantity}` }
-          );
-          
-          remainingOrder = existingOrder;
-          resultMessage = "Açık emriniz güncellendi.";
-        } else {
-          remainingOrder = await Order.create({ 
-            userId, marketId, type, outcome, quantity, price, status: 'OPEN' 
-          }, { transaction: t });
-          
-          await redisClient.zAdd(
-            type === 'BUY' ? bidsKey : asksKey, 
-            { score: price, value: `${remainingOrder.id}:${quantity}` }
-          );
-          
-          if (quantity < initialQuantity) {
-            resultMessage = "Emriniz kısmen eşleşti, kalanı deftere yazıldı.";
-          } else {
-            resultMessage = "Eşleşme bulunamadı, emriniz deftere yazıldı.";
-          }
-        }
       }
 
       await t.commit();
@@ -305,9 +349,19 @@ class OrderService {
         console.error('WebSocket bildirim hatası:', error.message);
       }
 
+      // Response mesajları
+      let resultMessage;
+      if (quantity === 0) {
+        resultMessage = "Emir tamamen eşleşti ve tamamlandı.";
+      } else if (quantity < initialQuantity) {
+        resultMessage = "Emriniz kısmen eşleşti, kalanı deftere yazıldı.";
+      } else {
+        resultMessage = "Eşleşme bulunamadı, emriniz deftere yazıldı.";
+      }
+
       return { 
         message: resultMessage,
-        ...(remainingOrder && { order: remainingOrder })
+        order: type === 'BUY' ? newBuyOrder : null
       };
 
     } catch (error) {
@@ -359,7 +413,6 @@ class OrderService {
       }
 
       if (order.type === 'SELL') {
-        // ✅ DÜZELTİLDİ: SELL emri iptalinde hisse iadesi (hisseler zaten kilitliydi)
         let share = await Share.findOne({
           where: { userId, marketId: order.marketId, outcome: order.outcome },
           transaction: t
