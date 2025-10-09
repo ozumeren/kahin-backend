@@ -18,6 +18,7 @@ const transactionRoutes = require('./routes/transaction.route');
 const portfolioRoutes = require('./routes/portfolio.route');
 const adminRoutes = require('./routes/admin.route');
 const devRoutes = require('./routes/dev.route');
+const tradeRoutes = require('./routes/trade.route'); // ✅ YENİ
 
 const app = express();
 const server = http.createServer(app);
@@ -45,6 +46,7 @@ app.get('/', (req, res) => {
       orders: '/api/v1/orders',
       transactions: '/api/v1/transactions',
       portfolio: '/api/v1/portfolio',
+      trades: '/api/v1/trades', // ✅ YENİ
       admin: '/api/v1/admin',
       websocket: 'wss://api.kahinmarket.com/ws'
     }
@@ -59,6 +61,7 @@ app.use('/api/v1/shares', shareRoutes);
 app.use('/api/v1/orders', orderRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
 app.use('/api/v1/portfolio', portfolioRoutes);
+app.use('/api/v1/trades', tradeRoutes); // ✅ YENİ
 app.use('/api/v1/admin', adminRoutes);
 
 // Dev route (sadece production dışında)
