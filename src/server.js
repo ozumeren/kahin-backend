@@ -107,7 +107,7 @@ async function startServer() {
       console.log(`✓ WebSocket: wss://api.kahinmarket.com/ws`);
       console.log(`✓ Ortam: ${process.env.NODE_ENV || 'development'}`);
       console.log(`✓ API Base URL: https://api.kahinmarket.com/api/v1`);
-      console.log(`✓ CORS: localhost:5173, localhost:5174, kahinmarket.com`);
+      console.log(`✓ CORS: localhost:5173, localhost:5174, kahinmarket.com, app.kahinmarket.com`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     });
   } catch (error) {
