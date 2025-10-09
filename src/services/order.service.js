@@ -168,17 +168,17 @@ class OrderService {
           throw ApiError.badRequest('Satmak için yeterli hisseniz yok.');
         }
 
-        // Hisse kilitle
-        sellerShare.quantity -= quantity;
-        await sellerShare.save({ transaction: t });
-
-        // Transaction kaydı
+        // *** DÜZELTME: Hisse kilitleme - sadece eşleşmeyen kısmı kilitle ***
+        const initialQuantity = quantity;
+        let lockedShares = 0; // Kilitlenen hisse sayısı
+        
+        // Transaction kaydı (başlangıçta)
         await Transaction.create({
           userId,
           marketId,
           type: 'bet',
           amount: 0,
-          description: `${quantity} adet ${outcome ? 'YES' : 'NO'} hissesi SELL emrine kilitlendi (fiyat: ${price})`
+          description: `${initialQuantity} adet ${outcome ? 'YES' : 'NO'} hissesi SELL emrine hazırlandı (fiyat: ${price})`
         }, { transaction: t });
         
         // Eşleşme kontrolü
@@ -192,17 +192,23 @@ class OrderService {
 
           if (buyPrice >= price) {
             const tradeQuantity = Math.min(quantity, buyerOrderQuantity);
-            const tradeTotal = tradeQuantity * buyPrice; // ✅ DOĞRU: Buyer'ın yüksek fiyatı
+            const tradeTotal = tradeQuantity * buyPrice;
+
+            // *** DÜZELTME: Eşleşen hisseyi direkt portfolyodan düş ***
+            sellerShare.quantity -= tradeQuantity;
+            await sellerShare.save({ transaction: t });
 
             // Satıcıya para ver
             seller.balance = parseFloat(seller.balance) + tradeTotal;
-            
+            await seller.save({ transaction: t });
+
+            // Satıcı transaction
             await Transaction.create({
               userId: seller.id,
               marketId,
               type: 'payout',
               amount: tradeTotal,
-              description: `${tradeQuantity} adet ${outcome ? 'YES' : 'NO'} hissesi satışı (fiyat: ${buyPrice})` // ✅ Bu da doğru
+              description: `${tradeQuantity} adet ${outcome ? 'YES' : 'NO'} hissesi satışı (fiyat: ${buyPrice})`
             }, { transaction: t });
 
             // Alıcı işlemleri
@@ -222,7 +228,7 @@ class OrderService {
             buyerShare.quantity += tradeQuantity;
             await buyerShare.save({ transaction: t });
             
-            // Fiyat farkı iadesi
+            // Fiyat farkı iadesi (alıcı daha yüksek fiyat vermiş olabilir)
             const priceDifference = buyPrice - price;
             if (priceDifference > 0) {
               const refund = tradeQuantity * priceDifference;
@@ -253,7 +259,17 @@ class OrderService {
           }
         }
         
-        // Kalan hisseyi geri ver
+        // *** DÜZELTME: Sadece eşleşmeyen kısmı kilitle ***
+        if (quantity > 0) {
+          // Kalan hisseyi kilitle
+          sellerShare.quantity -= quantity;
+          lockedShares = quantity;
+          await sellerShare.save({ transaction: t });
+          
+          console.log(`🔒 Satıcı ${userId}: ${quantity} adet hisse kilitlendi (toplam: ${sellerShare.quantity + quantity} -> ${sellerShare.quantity})`);
+        }
+        
+        // Eğer hisse sayısı 0 olduysa kaydı sil
         if (sellerShare.quantity === 0) {
           await sellerShare.destroy({ transaction: t });
         }
@@ -371,18 +387,28 @@ class OrderService {
       }
 
       if (order.type === 'SELL') {
+        // *** DÜZELTME: SELL emri iptalinde hisse iadesi ***
         let share = await Share.findOne({
           where: { userId, marketId: order.marketId, outcome: order.outcome },
           transaction: t
         });
 
         if (!share) {
+          // Hisse kaydı yoksa oluştur
           share = await Share.create({
-            userId, marketId: order.marketId, outcome: order.outcome, quantity: order.quantity
+            userId, 
+            marketId: order.marketId, 
+            outcome: order.outcome, 
+            quantity: order.quantity
           }, { transaction: t });
+          
+          console.log(`📈 Yeni hisse kaydı oluşturuldu: ${order.quantity} adet`);
         } else {
+          // Mevcut hisseye ekle
           share.quantity = parseInt(share.quantity) + parseInt(order.quantity);
           await share.save({ transaction: t });
+          
+          console.log(`📈 Hisse iadesi: ${share.quantity - order.quantity} + ${order.quantity} = ${share.quantity}`);
         }
 
         await Transaction.create({
