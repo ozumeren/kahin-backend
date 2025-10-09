@@ -62,9 +62,9 @@ class OrderService {
           
           if (sellPrice <= price) {
             const tradeQuantity = Math.min(quantity, sellerOrderQuantity);
-            const tradeTotal = tradeQuantity * sellPrice;
+            const tradeTotal = tradeQuantity * sellPrice; // ✅ Doğru - satış fiyatı
 
-            // Fiyat farkı iadesi
+            // Fiyat farkı iadesi - Bu kısım doğru
             const priceDifference = price - sellPrice;
             if (priceDifference > 0) {
               buyer.balance += tradeQuantity * priceDifference;
@@ -83,7 +83,7 @@ class OrderService {
               marketId,
               type: 'payout',
               amount: tradeTotal,
-              description: `${tradeQuantity} adet ${outcome ? 'YES' : 'NO'} hissesi satışı (fiyat: ${sellPrice})`
+              description: `${tradeQuantity} adet ${outcome ? 'YES' : 'NO'} hissesi satışı (fiyat: ${sellPrice})` // ✅ Bu doğru
             }, { transaction: t });
 
             // Hisse transferleri
@@ -170,19 +170,17 @@ class OrderService {
 
           if (buyPrice >= price) {
             const tradeQuantity = Math.min(quantity, buyerOrderQuantity);
-            const tradeTotal = tradeQuantity * buyPrice;
+            const tradeTotal = tradeQuantity * buyPrice; // ✅ DOĞRU: Buyer'ın yüksek fiyatı
 
             // Satıcıya para ver
             seller.balance = parseFloat(seller.balance) + tradeTotal;
-            await seller.save({ transaction: t });
-
-            // Satıcı transaction
+            
             await Transaction.create({
               userId: seller.id,
               marketId,
               type: 'payout',
               amount: tradeTotal,
-              description: `${tradeQuantity} adet ${outcome ? 'YES' : 'NO'} hissesi satışı (fiyat: ${buyPrice})`
+              description: `${tradeQuantity} adet ${outcome ? 'YES' : 'NO'} hissesi satışı (fiyat: ${buyPrice})` // ✅ Bu da doğru
             }, { transaction: t });
 
             // Alıcı işlemleri
