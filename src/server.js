@@ -8,6 +8,7 @@ const db = require('./models');
 const redisClient = require('../config/redis');
 const websocketServer = require('../config/websocket');
 const { errorHandler, notFoundHandler } = require('./middlewares/error.middleware');
+const cookieParser = require('cookie-parser');
 
 const authRoutes = require('./routes/auth.route');
 const userRoutes = require('./routes/user.route');
