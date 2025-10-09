@@ -42,13 +42,13 @@ class OrderService {
         buyer.balance -= totalCost;
         await buyer.save({ transaction: t });
 
-        // Transaction kaydı
+        // Transaction kaydı (tam miktar)
         await Transaction.create({
           userId,
           marketId,
           type: 'bet',
           amount: -totalCost,
-          description: `${outcome ? 'YES' : 'NO'} için ${quantity} adet BUY emri (fiyat: ${price})`
+          description: `${outcome ? 'YES' : 'NO'} için ${initialQuantity} adet BUY emri @ ${price} TL`
         }, { transaction: t });
         
         // Eşleşme kontrolü
@@ -416,4 +416,4 @@ class OrderService {
   }
 }
 
-module.exports = new OrderService()
+module.exports = new OrderService();
