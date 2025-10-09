@@ -24,8 +24,12 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+app.use(cors({
+  origin: 'https://kahinmarket.com', // Frontend domain
+  credentials: true // ✅ Cookie'ler için gerekli
+}));
 app.use(express.json());
+app.use(cookieParser());
 
 // Logger Middleware
 app.use((req, res, next) => {

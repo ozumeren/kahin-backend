@@ -5,26 +5,34 @@ const ApiError = require('../utils/apiError');
 
 const authMiddleware = async (req, res, next) => {
   try {
-    // 1. İstek başlığından (header) token'ı al
-    const authHeader = req.headers.authorization;
+    let token = null;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // 1. Token'ı al (Bearer token veya cookie'den)
+    const authHeader = req.headers.authorization;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      // Bearer token varsa onu kullan
+      token = authHeader.split(' ')[1];
+    } else if (req.cookies && req.cookies.token) {
+      // Cookie'de token varsa onu kullan
+      token = req.cookies.token;
+    }
+
+    if (!token) {
       throw ApiError.unauthorized('Yetkilendirme başarısız: Token bulunamadı.');
     }
 
-    const token = authHeader.split(' ')[1];
-
-    // 2. Token'ı doğrula ve içindeki kullanıcı ID'sini çöz
+    // 2. Token'ı doğrula
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 3. Token'dan gelen ID ile kullanıcıyı veritabanında bul
+    // 3. Kullanıcıyı bul
     const user = await User.findByPk(decoded.id);
 
     if (!user) {
       throw ApiError.unauthorized('Yetkilendirme başarısız: Kullanıcı bulunamadı.');
     }
 
-    // 4. Kullanıcı bilgisini isteğe (request) ekle
+    // 4. Kullanıcı bilgisini request'e ekle
     req.user = user;
     next();
   } catch (error) {
