@@ -55,10 +55,21 @@ class AuthService {
 
     // 3. Şifre doğruysa, bir JWT oluştur
     const accessToken = jwt.sign(
-      { id: user.id }, // Token'ın içine kullanıcı ID'sini koy
-      process.env.JWT_SECRET, // Coolify'da belirlediğimiz gizli anahtar
-      { expiresIn: '7d' } // Token'ın geçerlilik süresi (7 gün)
+      { id: user.id },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
     );
+
+    return { 
+      accessToken, 
+      user: { 
+        id: user.id, 
+        username: user.username, 
+        email: user.email, 
+        balance: user.balance,  // ✅ Balance ekle
+        role: user.role 
+      } 
+    };
 
     return { accessToken, user: { id: user.id, username: user.username, email: user.email, role: user.role } };
   }

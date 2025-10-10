@@ -20,6 +20,8 @@ class AuthController {
   try {
     const { email, password } = req.body;
 
+    const result = await authService.login(email, password);
+
     // Kullanıcıyı bul
     const user = await User.findOne({ where: { email } });
     if (!user) {
