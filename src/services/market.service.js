@@ -332,7 +332,10 @@ class MarketService {
       // 4. Bids'i grupla ve formatla (aynı fiyattaki emirleri topla)
       const bidsMap = new Map();
       for (const item of bidsData) {
-        const [orderId, quantity] = item.value.split(':');
+        const parts = item.value.split(':');
+        const orderId = parts[0];
+        const quantity = parts[1];
+        // parts[2] userId olabilir, onu görmezden gel
         const price = item.score;
         const currentQty = bidsMap.get(price) || 0;
         bidsMap.set(price, currentQty + parseInt(quantity));
@@ -350,7 +353,10 @@ class MarketService {
       // 5. Asks'i grupla ve formatla
       const asksMap = new Map();
       for (const item of asksData) {
-        const [orderId, quantity] = item.value.split(':');
+        const parts = item.value.split(':');
+        const orderId = parts[0];
+        const quantity = parts[1];
+        // parts[2] userId olabilir, onu görmezden gel
         const price = item.score;
         const currentQty = asksMap.get(price) || 0;
         asksMap.set(price, currentQty + parseInt(quantity));

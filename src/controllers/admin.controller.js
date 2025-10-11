@@ -175,7 +175,7 @@ class AdminController {
       const { marketId, outcome, quantity } = req.body;
 
       // Validasyon
-      if (!marketId || !outcome || !quantity || quantity <= 0) {
+      if (!marketId || outcome === null || outcome === undefined || !quantity || quantity <= 0) {
         return res.status(400).json({ 
           message: 'Pazar ID, sonuç (true/false) ve pozitif miktar gereklidir.' 
         });

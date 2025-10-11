@@ -35,6 +35,11 @@ class OrderService {
       
       // ✅ YENİ: Eğer BUY emri varsa, önce order oluştur
       let newBuyOrder = null;
+      let newSellOrder = null;
+      
+      // ✅ Initial quantity tracking (WebSocket notifications için)
+      let initialQuantity = quantity;
+      let initialSellQuantity = quantity;
       
       // ========== PHASE 2: ORDER PROCESSING ==========
       if (type === 'BUY') {
@@ -64,13 +69,21 @@ class OrderService {
         
         // Eşleşme kontrolü
         const matchingSellOrders = await redisClient.zRangeWithScores(asksKey, 0, -1);
-        
+
         for (const sellOrderData of matchingSellOrders) {
           if (quantity === 0) break;
           const sellPrice = sellOrderData.score;
-          const [sellerOrderId, sellerOrderQuantityStr] = sellOrderData.value.split(':');
-          const sellerOrderQuantity = parseInt(sellerOrderQuantityStr);
-          
+          const parts = sellOrderData.value.split(':');
+          const sellerOrderId = parts[0];
+          const sellerOrderQuantity = parseInt(parts[1]);
+          const sellerUserId = parts[2]; // userId varsa al
+
+          // ✅ Self-trading önleme kontrolü
+          if (sellerUserId && sellerUserId === userId) {
+            console.log(`⚠️ Self-trading engellendi: Kullanıcı ${userId} kendi emriyle eşleşemez`);
+            continue; // Aynı kullanıcının emrini atla
+          }
+
           if (sellPrice <= price) {
             const tradeQuantity = Math.min(quantity, sellerOrderQuantity);
             const tradeTotal = tradeQuantity * sellPrice;
@@ -163,7 +176,7 @@ class OrderService {
             if (remainingSellerQty > 0) {
               await redisClient.zAdd(asksKey, { 
                 score: sellPrice, 
-                value: `${sellerOrderId}:${remainingSellerQty}` 
+                value: `${sellerOrderId}:${remainingSellerQty}:${sellerUserId || ''}` 
               });
               await Order.update(
                 { quantity: remainingSellerQty }, 
@@ -189,10 +202,10 @@ class OrderService {
           newBuyOrder.quantity = quantity;
           await newBuyOrder.save({ transaction: t });
           
-          // Redis'e ekle
+          // Redis'e ekle (userId ile birlikte)
           await redisClient.zAdd(bidsKey, { 
             score: price, 
-            value: `${newBuyOrder.id}:${quantity}` 
+            value: `${newBuyOrder.id}:${quantity}:${userId}` 
           });
         }
 
@@ -260,7 +273,7 @@ class OrderService {
           description: `${quantity} adet ${outcome ? 'YES' : 'NO'} hissesi SELL emrine kilitlendi (fiyat: ${price})`
         }, { transaction: t });
         
-        let initialSellQuantity = quantity;
+        // initialSellQuantity üstte tanımlandı, tekrar tanımlamaya gerek yok
         
         // Eşleşme kontrolü
         const matchingBuyOrders = await redisClient.zRangeWithScores(bidsKey, 0, -1, { REV: true });
@@ -268,8 +281,16 @@ class OrderService {
         for (const buyOrderData of matchingBuyOrders) {
           if (quantity === 0) break;
           const buyPrice = buyOrderData.score;
-          const [buyerOrderId, buyerOrderQuantityStr] = buyOrderData.value.split(':');
-          const buyerOrderQuantity = parseInt(buyerOrderQuantityStr);
+          const parts = buyOrderData.value.split(':');
+          const buyerOrderId = parts[0];
+          const buyerOrderQuantity = parseInt(parts[1]);
+          const buyerUserId = parts[2]; // userId varsa al
+
+          // ✅ Self-trading önleme kontrolü
+          if (buyerUserId && buyerUserId === userId) {
+            console.log(`⚠️ Self-trading engellendi: Kullanıcı ${userId} kendi emriyle eşleşemez`);
+            continue; // Aynı kullanıcının emrini atla
+          }
 
           if (buyPrice >= price) {
             const tradeQuantity = Math.min(quantity, buyerOrderQuantity);
@@ -365,7 +386,7 @@ class OrderService {
             if (remainingBuyerQty > 0) {
               await redisClient.zAdd(bidsKey, { 
                 score: buyPrice, 
-                value: `${buyerOrderId}:${remainingBuyerQty}` 
+                value: `${buyerOrderId}:${remainingBuyerQty}:${buyerUserId || ''}` 
               });
               await Order.update(
                 { quantity: remainingBuyerQty }, 
@@ -391,10 +412,10 @@ class OrderService {
           newSellOrder.quantity = quantity;
           await newSellOrder.save({ transaction: t });
           
-          // Redis'e ekle
+          // Redis'e ekle (userId ile birlikte)
           await redisClient.zAdd(asksKey, { 
             score: price, 
-            value: `${newSellOrder.id}:${quantity}` 
+            value: `${newSellOrder.id}:${quantity}:${userId}` 
           });
         }
         
