@@ -48,6 +48,9 @@ class OrderService {
       
       // ✅ Actual spent tracking (BUY emirleri için)
       let actualSpent = 0;
+
+      // 💰 Bakiye güncellemelerini transaction sonrasında göndermek için
+      const balanceUpdates = [];
       
       // ========== PHASE 2: ORDER PROCESSING ==========
       if (type === 'BUY') {
@@ -110,12 +113,8 @@ class OrderService {
             seller.balance = parseFloat(seller.balance) + tradeTotal;
             await seller.save({ transaction: t });
 
-            // 💰 Satıcının bakiyesini WebSocket ile bildir
-            try {
-              await websocketServer.publishBalanceUpdate(seller.id, seller.balance);
-            } catch (error) {
-              console.error('Balance update WebSocket bildirimi hatası:', error.message);
-            }
+            // 💰 Satıcının bakiye güncellemesini kaydet (transaction sonrası gönderilecek)
+            balanceUpdates.push({ userId: seller.id, balance: seller.balance });
 
             // ✅ DÜZELTME: Artık doğru order ID'leri kullanıyoruz
             await Trade.create({
@@ -243,6 +242,10 @@ class OrderService {
           }, { transaction: t });
         }
 
+        // 💰 BUY emri veren kullanıcının final bakiyesini kaydet
+        const finalBuyer = await User.findByPk(userId, { transaction: t });
+        balanceUpdates.push({ userId: finalBuyer.id, balance: finalBuyer.balance });
+
       } else if (type === 'SELL') {
         const seller = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
         const sellerShare = await Share.findOne({ 
@@ -313,12 +316,8 @@ class OrderService {
             seller.balance = parseFloat(seller.balance) + tradeTotal;
             await seller.save({ transaction: t });
 
-            // 💰 Satıcının bakiyesini WebSocket ile bildir
-            try {
-              await websocketServer.publishBalanceUpdate(seller.id, seller.balance);
-            } catch (error) {
-              console.error('Balance update WebSocket bildirimi hatası:', error.message);
-            }
+            // 💰 Satıcının bakiye güncellemesini kaydet (transaction sonrası gönderilecek)
+            balanceUpdates.push({ userId: seller.id, balance: seller.balance });
 
             // Alıcı işlemleri
             const buyOrder = await Order.findByPk(buyerOrderId, { transaction: t });
@@ -397,12 +396,8 @@ class OrderService {
               buyer.balance = parseFloat(buyer.balance) + refund;
               await buyer.save({ transaction: t });
 
-              // 💰 Alıcının bakiyesini WebSocket ile bildir
-              try {
-                await websocketServer.publishBalanceUpdate(buyer.id, buyer.balance);
-              } catch (error) {
-                console.error('Balance update WebSocket bildirimi hatası:', error.message);
-              }
+              // 💰 Alıcının bakiye güncellemesini kaydet (transaction sonrası gönderilecek)
+              balanceUpdates.push({ userId: buyer.id, balance: buyer.balance });
             }
 
             // Redis güncelle
@@ -447,6 +442,10 @@ class OrderService {
         }
         
         console.log(`✅ SELL eşleşmesi tamamlandı - Eşleşen: ${initialSellQuantity - quantity}, Kalan: ${quantity}`);
+
+        // 💰 SELL emri veren kullanıcının final bakiyesini kaydet
+        const finalSeller = await User.findByPk(userId, { transaction: t });
+        balanceUpdates.push({ userId: finalSeller.id, balance: finalSeller.balance });
       }
 
       // 🆕 WebSocket bildirimleri için gerekli verileri transaction içinde topla
@@ -568,6 +567,20 @@ class OrderService {
           }
         } catch (error) {
           console.error('Order filled WebSocket bildirimi hatası:', error.message);
+        }
+      }
+
+      // 💰 Bakiye güncellemelerini gönder (tekrar eden userId'leri temizle)
+      const uniqueBalanceUpdates = new Map();
+      balanceUpdates.forEach(update => {
+        uniqueBalanceUpdates.set(update.userId, update.balance);
+      });
+
+      for (const [userId, balance] of uniqueBalanceUpdates.entries()) {
+        try {
+          await websocketServer.publishBalanceUpdate(userId, balance);
+        } catch (error) {
+          console.error('Balance update WebSocket bildirimi hatası:', error.message);
         }
       }
 
@@ -704,9 +717,10 @@ class OrderService {
         console.error('Order cancelled WebSocket bildirimi hatası:', error.message);
       }
 
-      // 💰 Eğer BUY emri iptal edildiyse bakiye güncellemesini bildir
+      // 💰 Bakiye güncellemesini bildir (BUY emri iptal edildiyse)
       if (updatedUser) {
         try {
+          console.log(`💰 Sending balance update for user ${userId}: ${updatedUser.balance}`);
           await websocketServer.publishBalanceUpdate(userId, updatedUser.balance);
         } catch (error) {
           console.error('Balance update WebSocket bildirimi hatası:', error.message);

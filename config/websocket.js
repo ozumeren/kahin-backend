@@ -96,6 +96,10 @@ class WebSocketServer {
         await this.subscribeToMarket(ws, marketId, userId);
         break;
 
+      case 'subscribe_user':
+        this.subscribeUser(ws, userId);
+        break;
+
       case 'unsubscribe':
         this.unsubscribeFromMarket(ws, marketId);
         break;
@@ -114,6 +118,29 @@ class WebSocketServer {
           timestamp: new Date().toISOString()
         }));
     }
+  }
+
+  subscribeUser(ws, userId) {
+    if (!userId) {
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: 'userId gereklidir',
+        timestamp: new Date().toISOString()
+      }));
+      return;
+    }
+
+    // UserId'yi WebSocket'e ekle (kişiselleştirilmiş bildirimler için)
+    ws.userId = userId;
+
+    ws.send(JSON.stringify({
+      type: 'user_subscribed',
+      userId,
+      message: `User ${userId} abone oldu`,
+      timestamp: new Date().toISOString()
+    }));
+
+    console.log(`👤 User ${userId} subscribed to personal notifications`);
   }
 
   async subscribeToMarket(ws, marketId, userId = null) {
