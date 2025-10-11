@@ -403,14 +403,17 @@ class OrderService {
         console.log(`✅ SELL eşleşmesi tamamlandı - Eşleşen: ${initialSellQuantity - quantity}, Kalan: ${quantity}`);
       }
 
-      await t.commit();
+      // 🆕 WebSocket bildirimleri için gerekli verileri transaction içinde topla
+      const wsNotifications = [];
 
-      // 🆕 Eşleşen alıcı emirlerine bildirim gönder (my_order_filled) - SELL emri için
+      // SELL emri için alıcı bildirimlerini hazırla
       if (type === 'SELL' && filledBuyOrders && filledBuyOrders.size > 0) {
         for (const [orderId, info] of filledBuyOrders.entries()) {
-          try {
-            const buyOrder = await Order.findByPk(orderId);
-            await websocketServer.publishOrderFilled(info.userId, {
+          const buyOrder = await Order.findByPk(orderId, { transaction: t });
+          wsNotifications.push({
+            type: 'order_filled',
+            userId: info.userId,
+            data: {
               orderId: orderId,
               marketId,
               marketTitle: market.title,
@@ -424,42 +427,50 @@ class OrderService {
               status: buyOrder.status === 'FILLED' ? 'FILLED' : 'PARTIALLY_FILLED',
               lastTradePrice: info.price,
               lastTradeQuantity: info.filledQuantity
-            });
-          } catch (error) {
-            console.error('Order filled WebSocket bildirimi hatası:', error.message);
-          }
+            }
+          });
         }
 
-        // 🆕 Satıcının emir dolum bildirimini gönder (eğer eşleşme olduysa)
+        // Satıcının bildirimini hazırla
         if (initialSellQuantity > quantity) {
-          try {
-            await websocketServer.publishOrderFilled(userId, {
-              orderId: await Order.findOne({ where: { userId, marketId, type: 'SELL', status: ['OPEN', 'FILLED'] }, order: [['createdAt', 'DESC']] }).then(o => o.id),
-              marketId,
-              marketTitle: market.title,
-              orderType: 'SELL',
-              outcome,
-              originalQuantity: initialSellQuantity,
-              filledQuantity: initialSellQuantity - quantity,
-              remainingQuantity: quantity,
-              price,
-              avgFillPrice: price,
-              status: quantity === 0 ? 'FILLED' : 'PARTIALLY_FILLED',
-              lastTradePrice: price,
-              lastTradeQuantity: initialSellQuantity - quantity
+          const sellOrder = await Order.findOne({ 
+            where: { userId, marketId, type: 'SELL', status: ['OPEN', 'FILLED'] }, 
+            order: [['createdAt', 'DESC']],
+            transaction: t 
+          });
+          
+          if (sellOrder) {
+            wsNotifications.push({
+              type: 'order_filled',
+              userId: userId,
+              data: {
+                orderId: sellOrder.id,
+                marketId,
+                marketTitle: market.title,
+                orderType: 'SELL',
+                outcome,
+                originalQuantity: initialSellQuantity,
+                filledQuantity: initialSellQuantity - quantity,
+                remainingQuantity: quantity,
+                price,
+                avgFillPrice: price,
+                status: quantity === 0 ? 'FILLED' : 'PARTIALLY_FILLED',
+                lastTradePrice: price,
+                lastTradeQuantity: initialSellQuantity - quantity
+              }
             });
-          } catch (error) {
-            console.error('Order filled WebSocket bildirimi hatası:', error.message);
           }
         }
       }
 
-      // 🆕 Eşleşen satıcı emirlerine bildirim gönder (my_order_filled) - BUY emri için
+      // BUY emri için satıcı bildirimlerini hazırla
       if (type === 'BUY' && filledOrders && filledOrders.size > 0) {
         for (const [orderId, info] of filledOrders.entries()) {
-          try {
-            const sellOrder = await Order.findByPk(orderId);
-            await websocketServer.publishOrderFilled(info.userId, {
+          const sellOrder = await Order.findByPk(orderId, { transaction: t });
+          wsNotifications.push({
+            type: 'order_filled',
+            userId: info.userId,
+            data: {
               orderId: orderId,
               marketId,
               marketTitle: market.title,
@@ -473,16 +484,16 @@ class OrderService {
               status: sellOrder.status === 'FILLED' ? 'FILLED' : 'PARTIALLY_FILLED',
               lastTradePrice: info.price,
               lastTradeQuantity: info.filledQuantity
-            });
-          } catch (error) {
-            console.error('Order filled WebSocket bildirimi hatası:', error.message);
-          }
+            }
+          });
         }
 
-        // 🆕 Alıcının emir dolum bildirimini gönder (eğer eşleşme olduysa)
+        // Alıcının bildirimini hazırla
         if (newBuyOrder && initialQuantity > quantity) {
-          try {
-            await websocketServer.publishOrderFilled(userId, {
+          wsNotifications.push({
+            type: 'order_filled',
+            userId: userId,
+            data: {
               orderId: newBuyOrder.id,
               marketId,
               marketTitle: market.title,
@@ -496,10 +507,21 @@ class OrderService {
               status: quantity === 0 ? 'FILLED' : 'PARTIALLY_FILLED',
               lastTradePrice: price,
               lastTradeQuantity: initialQuantity - quantity
-            });
-          } catch (error) {
-            console.error('Order filled WebSocket bildirimi hatası:', error.message);
+            }
+          });
+        }
+      }
+
+      await t.commit();
+
+      // 🆕 Transaction commit edildikten SONRA WebSocket bildirimlerini gönder
+      for (const notification of wsNotifications) {
+        try {
+          if (notification.type === 'order_filled') {
+            await websocketServer.publishOrderFilled(notification.userId, notification.data);
           }
+        } catch (error) {
+          console.error('Order filled WebSocket bildirimi hatası:', error.message);
         }
       }
 
@@ -611,22 +633,25 @@ class OrderService {
       order.status = 'CANCELLED';
       await order.save({ transaction: t });
 
+      // WebSocket bildirimi için gerekli verileri transaction içinde topla
+      const cancelNotificationData = {
+        orderId: order.id,
+        marketId: order.marketId,
+        marketTitle: market.title,
+        orderType: order.type,
+        outcome: order.outcome,
+        quantity: order.quantity,
+        price: order.price,
+        reason: 'user_cancelled',
+        refundAmount: refundAmount,
+        refundType: refundType
+      };
+
       await t.commit();
 
-      // 🆕 Emir iptal bildirimi gönder
+      // 🆕 Transaction commit edildikten SONRA WebSocket bildirimlerini gönder
       try {
-        await websocketServer.publishOrderCancelled(userId, {
-          orderId: order.id,
-          marketId: order.marketId,
-          marketTitle: market.title,
-          orderType: order.type,
-          outcome: order.outcome,
-          quantity: order.quantity,
-          price: order.price,
-          reason: 'user_cancelled',
-          refundAmount: refundAmount,
-          refundType: refundType
-        });
+        await websocketServer.publishOrderCancelled(userId, cancelNotificationData);
       } catch (error) {
         console.error('Order cancelled WebSocket bildirimi hatası:', error.message);
       }
