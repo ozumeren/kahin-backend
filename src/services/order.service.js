@@ -29,6 +29,10 @@ class OrderService {
       
       const { bids: bidsKey, asks: asksKey } = getMarketKeys(marketId, outcome);
       
+      // ✅ Eşleşen emirleri takip etmek için (tüm tipler için tanımla)
+      const filledOrders = new Map(); // SELL emirleri için (BUY ile eşleşenler)
+      const filledBuyOrders = new Map(); // BUY emirleri için (SELL ile eşleşenler)
+      
       // ✅ YENİ: Eğer BUY emri varsa, önce order oluştur
       let newBuyOrder = null;
       
@@ -60,9 +64,6 @@ class OrderService {
         
         // Eşleşme kontrolü
         const matchingSellOrders = await redisClient.zRangeWithScores(asksKey, 0, -1);
-        
-        // Eşleşen emirlerin bilgilerini topla (my_order_filled bildirimi için)
-        const filledOrders = new Map(); // sellOrderId -> filled quantity
         
         for (const sellOrderData of matchingSellOrders) {
           if (quantity === 0) break;
@@ -260,9 +261,6 @@ class OrderService {
         }, { transaction: t });
         
         let initialSellQuantity = quantity;
-        
-        // Eşleşen emirlerin bilgilerini topla (my_order_filled bildirimi için)
-        const filledBuyOrders = new Map(); // buyOrderId -> filled quantity
         
         // Eşleşme kontrolü
         const matchingBuyOrders = await redisClient.zRangeWithScores(bidsKey, 0, -1, { REV: true });
