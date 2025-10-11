@@ -151,7 +151,7 @@ class OrderService {
                 userId: seller.id,
                 orderId: sellerOrderId,
                 filledQuantity: 0,
-                originalQuantity: sellerOrderQuantity + (sellerOrderQuantity - parseInt(sellerOrderQuantityStr)),
+                originalQuantity: sellerOrderQuantity,
                 price: sellPrice
               });
             }
@@ -354,7 +354,7 @@ class OrderService {
                 userId: buyer.id,
                 orderId: buyerOrderId,
                 filledQuantity: 0,
-                originalQuantity: buyerOrderQuantity + (buyerOrderQuantity - parseInt(buyerOrderQuantityStr)),
+                originalQuantity: buyerOrderQuantity,
                 price: buyPrice
               });
             }
