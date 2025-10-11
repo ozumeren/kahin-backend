@@ -46,6 +46,9 @@ class OrderService {
       let initialQuantity = quantity;
       let initialSellQuantity = quantity;
       
+      // ✅ Actual spent tracking (BUY emirleri için)
+      let actualSpent = 0;
+      
       // ========== PHASE 2: ORDER PROCESSING ==========
       if (type === 'BUY') {
         const buyer = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
@@ -70,8 +73,6 @@ class OrderService {
           status: 'OPEN' 
         }, { transaction: t });
 
-        let actualSpent = 0;
-        
         // Eşleşme kontrolü
         const matchingSellOrders = await redisClient.zRangeWithScores(asksKey, 0, -1);
 
