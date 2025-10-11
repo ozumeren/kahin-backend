@@ -140,7 +140,17 @@ class WebSocketServer {
       timestamp: new Date().toISOString()
     }));
 
-    console.log(`👤 User ${userId} subscribed to personal notifications`);
+    console.log(`👤 User ${userId} subscribed to personal notifications (ws.userId set)`);
+    
+    // Debug: Kaç client'ın userId'si var?
+    let totalClientsWithUserId = 0;
+    this.wss.clients.forEach((client) => {
+      if (client.userId) {
+        totalClientsWithUserId++;
+        console.log(`   - Client with userId: ${client.userId}`);
+      }
+    });
+    console.log(`   Total clients with userId: ${totalClientsWithUserId}/${this.wss.clients.size}`);
   }
 
   async subscribeToMarket(ws, marketId, userId = null) {
@@ -244,22 +254,22 @@ class WebSocketServer {
   sendToUser(userId, message) {
     let sentCount = 0;
     
-    // Tüm marketlerdeki clientları kontrol et
-    this.clients.forEach((clientSet) => {
-      clientSet.forEach((client) => {
-        // Client'a userId eklenmiş mi kontrol et (subscribe sırasında eklenebilir)
-        if (client.userId === userId && client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({
-            ...message,
-            timestamp: new Date().toISOString()
-          }));
-          sentCount++;
-        }
-      });
+    // Tüm WebSocket client'larını kontrol et (wss.clients)
+    this.wss.clients.forEach((client) => {
+      // Client'a userId eklenmiş mi kontrol et
+      if (client.userId === userId && client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({
+          ...message,
+          timestamp: new Date().toISOString()
+        }));
+        sentCount++;
+      }
     });
 
     if (sentCount > 0) {
       console.log(`📧 User ${userId} için ${sentCount} client'a mesaj gönderildi: ${message.type}`);
+    } else {
+      console.log(`⚠️ User ${userId} için aktif WebSocket bağlantısı bulunamadı (userId eşleşmedi)`);
     }
     
     return sentCount;
@@ -364,6 +374,8 @@ class WebSocketServer {
   // Bakiye güncelleme bildirimi (sadece ilgili kullanıcıya)
   async publishBalanceUpdate(userId, newBalance) {
     try {
+      console.log(`💰 Attempting to send balance update to user ${userId}: ${newBalance} TL`);
+      
       const message = {
         type: 'balance_updated',
         data: {
@@ -374,7 +386,9 @@ class WebSocketServer {
       const sentCount = this.sendToUser(userId, message);
       
       if (sentCount > 0) {
-        console.log(`💰 User ${userId} bakiyesi güncellendi: ${newBalance} TL`);
+        console.log(`✅ User ${userId} bakiyesi güncellendi: ${newBalance} TL (${sentCount} client'a gönderildi)`);
+      } else {
+        console.log(`⚠️ User ${userId} için bakiye güncellemesi gönderilemedi (aktif bağlantı yok)`);
       }
     } catch (error) {
       console.error('Balance update publish hatası:', error);
