@@ -720,7 +720,6 @@ class OrderService {
       // 💰 Bakiye güncellemesini bildir (BUY emri iptal edildiyse)
       if (updatedUser) {
         try {
-          console.log(`💰 Sending balance update for user ${userId}: ${updatedUser.balance}`);
           await websocketServer.publishBalanceUpdate(userId, updatedUser.balance);
         } catch (error) {
           console.error('Balance update WebSocket bildirimi hatası:', error.message);
