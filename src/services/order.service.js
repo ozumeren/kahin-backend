@@ -27,6 +27,11 @@ class OrderService {
       if (!market) throw ApiError.notFound('Pazar bulunamadı.');
       if (market.status !== 'open') throw ApiError.badRequest('Pazar işlem için açık değil.');
       
+      // ✅ Fiyat validasyonu (0.01 - 0.99 aralığı)
+      if (price < 0.01 || price > 0.99) {
+        throw ApiError.badRequest('Fiyat 0.01 TL ile 0.99 TL arasında olmalıdır.');
+      }
+      
       const { bids: bidsKey, asks: asksKey } = getMarketKeys(marketId, outcome);
       
       // ✅ Eşleşen emirleri takip etmek için (tüm tipler için tanımla)

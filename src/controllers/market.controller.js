@@ -14,7 +14,7 @@ class MarketController {
 
       const markets = await marketService.findAll(filters);
       
-      // Her market için volume ve tradersCount hesapla
+      // Her market için volume, tradersCount ve prices hesapla
       const marketsWithStats = await Promise.all(
         markets.map(async (market) => {
           const marketData = market.toJSON();
@@ -44,6 +44,25 @@ class MarketController {
           });
           
           marketData.tradersCount = traderSet.size;
+          
+          // Order book'tan fiyatları al
+          try {
+            const orderBook = await marketService.getOrderBook(market.id);
+            
+            // YES fiyatı: best bid veya mid price
+            marketData.yesPrice = orderBook.yes.midPrice || 
+                                  (orderBook.yes.bids[0]?.price) || 
+                                  '50.00';
+            
+            // NO fiyatı: best bid veya mid price
+            marketData.noPrice = orderBook.no.midPrice || 
+                                 (orderBook.no.bids[0]?.price) || 
+                                 '50.00';
+          } catch (error) {
+            // Order book yoksa default değerler
+            marketData.yesPrice = '50.00';
+            marketData.noPrice = '50.00';
+          }
           
           return marketData;
         })
@@ -91,6 +110,25 @@ class MarketController {
       });
       
       marketData.tradersCount = traderSet.size;
+      
+      // Order book'tan fiyatları al
+      try {
+        const orderBook = await marketService.getOrderBook(id);
+        
+        // YES fiyatı: best bid veya mid price
+        marketData.yesPrice = orderBook.yes.midPrice || 
+                              (orderBook.yes.bids[0]?.price) || 
+                              '50.00';
+        
+        // NO fiyatı: best bid veya mid price
+        marketData.noPrice = orderBook.no.midPrice || 
+                             (orderBook.no.bids[0]?.price) || 
+                             '50.00';
+      } catch (error) {
+        // Order book yoksa default değerler
+        marketData.yesPrice = '50.00';
+        marketData.noPrice = '50.00';
+      }
       
       res.status(200).json({
         success: true,
