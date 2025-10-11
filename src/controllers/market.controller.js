@@ -49,6 +49,13 @@ class MarketController {
           try {
             const orderBook = await marketService.getOrderBook(market.id);
             
+            console.log(`📊 Market ${market.id} - Order Book:`, {
+              yesMidPrice: orderBook.yes.midPrice,
+              yesBestBid: orderBook.yes.bids[0]?.price,
+              noMidPrice: orderBook.no.midPrice,
+              noBestBid: orderBook.no.bids[0]?.price
+            });
+            
             // YES fiyatı: best bid veya mid price
             marketData.yesPrice = orderBook.yes.midPrice || 
                                   (orderBook.yes.bids[0]?.price) || 
@@ -58,7 +65,13 @@ class MarketController {
             marketData.noPrice = orderBook.no.midPrice || 
                                  (orderBook.no.bids[0]?.price) || 
                                  '50.00';
+            
+            console.log(`📊 Market ${market.id} - Final Prices:`, {
+              yesPrice: marketData.yesPrice,
+              noPrice: marketData.noPrice
+            });
           } catch (error) {
+            console.log(`⚠️ Market ${market.id} - No order book, using defaults`);
             // Order book yoksa default değerler
             marketData.yesPrice = '50.00';
             marketData.noPrice = '50.00';
