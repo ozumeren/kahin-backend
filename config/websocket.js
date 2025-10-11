@@ -334,6 +334,26 @@ class WebSocketServer {
     }
   }
 
+  // Bakiye güncelleme bildirimi (sadece ilgili kullanıcıya)
+  async publishBalanceUpdate(userId, newBalance) {
+    try {
+      const message = {
+        type: 'balance_updated',
+        data: {
+          balance: newBalance
+        }
+      };
+
+      const sentCount = this.sendToUser(userId, message);
+      
+      if (sentCount > 0) {
+        console.log(`💰 User ${userId} bakiyesi güncellendi: ${newBalance} TL`);
+      }
+    } catch (error) {
+      console.error('Balance update publish hatası:', error);
+    }
+  }
+
   // Order service tarafından çağrılacak (emir değiştiğinde)
   async publishOrderBookUpdate(marketId, orderBookData) {
     try {

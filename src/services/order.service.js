@@ -110,6 +110,13 @@ class OrderService {
             seller.balance = parseFloat(seller.balance) + tradeTotal;
             await seller.save({ transaction: t });
 
+            // 💰 Satıcının bakiyesini WebSocket ile bildir
+            try {
+              await websocketServer.publishBalanceUpdate(seller.id, seller.balance);
+            } catch (error) {
+              console.error('Balance update WebSocket bildirimi hatası:', error.message);
+            }
+
             // ✅ DÜZELTME: Artık doğru order ID'leri kullanıyoruz
             await Trade.create({
               buyerId: buyer.id,
@@ -306,6 +313,13 @@ class OrderService {
             seller.balance = parseFloat(seller.balance) + tradeTotal;
             await seller.save({ transaction: t });
 
+            // 💰 Satıcının bakiyesini WebSocket ile bildir
+            try {
+              await websocketServer.publishBalanceUpdate(seller.id, seller.balance);
+            } catch (error) {
+              console.error('Balance update WebSocket bildirimi hatası:', error.message);
+            }
+
             // Alıcı işlemleri
             const buyOrder = await Order.findByPk(buyerOrderId, { transaction: t });
             const buyer = await User.findByPk(buyOrder.userId, { 
@@ -382,6 +396,13 @@ class OrderService {
               const refund = tradeQuantity * priceDifference;
               buyer.balance = parseFloat(buyer.balance) + refund;
               await buyer.save({ transaction: t });
+
+              // 💰 Alıcının bakiyesini WebSocket ile bildir
+              try {
+                await websocketServer.publishBalanceUpdate(buyer.id, buyer.balance);
+              } catch (error) {
+                console.error('Balance update WebSocket bildirimi hatası:', error.message);
+              }
             }
 
             // Redis güncelle
@@ -606,6 +627,7 @@ class OrderService {
       // Para/hisse iadesi
       let refundAmount = 0;
       let refundType = '';
+      let updatedUser = null;
       
       if (order.type === 'BUY') {
         const user = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
@@ -613,6 +635,7 @@ class OrderService {
         refundType = 'balance';
         user.balance = parseFloat(user.balance) + refundAmount;
         await user.save({ transaction: t });
+        updatedUser = user;
 
         await Transaction.create({
           userId,
@@ -679,6 +702,15 @@ class OrderService {
         await websocketServer.publishOrderCancelled(userId, cancelNotificationData);
       } catch (error) {
         console.error('Order cancelled WebSocket bildirimi hatası:', error.message);
+      }
+
+      // 💰 Eğer BUY emri iptal edildiyse bakiye güncellemesini bildir
+      if (updatedUser) {
+        try {
+          await websocketServer.publishBalanceUpdate(userId, updatedUser.balance);
+        } catch (error) {
+          console.error('Balance update WebSocket bildirimi hatası:', error.message);
+        }
       }
 
       try {
