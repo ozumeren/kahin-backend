@@ -4,6 +4,7 @@ const db = require('../models');
 const { Market, Share, User, Transaction, Order, sequelize } = db;
 const redisClient = require('../../config/redis');
 const ApiError = require('../utils/apiError');
+const websocketServer = require('../../config/websocket');
 
 class MarketService {
   async findAll(queryOptions = {}) {
@@ -93,6 +94,9 @@ class MarketService {
 
     console.log(`📋 ${openOrders.length} açık emir iptal ediliyor...`);
 
+    // İptal edilen emirleri topla (WebSocket bildirimleri için)
+    const cancelledOrdersData = [];
+
     for (const order of openOrders) {
       console.log(`İptal edilen emir: ${order.type} ${order.quantity} adet ${order.outcome ? 'YES' : 'NO'} @ ${order.price}`);
       
@@ -111,6 +115,9 @@ class MarketService {
       }
 
       // *** DÜZELTME: Para/hisse iadesi ***
+      let refundAmount = 0;
+      let refundType = '';
+      
       if (order.type === 'BUY') {
         // BUY emri için para iadesi
         const user = await User.findByPk(order.userId, { 
@@ -118,7 +125,8 @@ class MarketService {
           transaction: t 
         });
         
-        const refundAmount = parseFloat(order.quantity) * parseFloat(order.price);
+        refundAmount = parseFloat(order.quantity) * parseFloat(order.price);
+        refundType = 'balance';
         user.balance = parseFloat(user.balance) + refundAmount;
         await user.save({ transaction: t });
 
@@ -135,6 +143,7 @@ class MarketService {
 
       if (order.type === 'SELL') {
         // SELL emri için hisse iadesi
+        refundType = 'shares';
         let share = await Share.findOne({
           where: { 
             userId: order.userId, 
@@ -172,6 +181,19 @@ class MarketService {
       // Emri iptal et
       order.status = 'CANCELLED';
       await order.save({ transaction: t });
+      
+      // İptal edilen emir bilgisini sakla (WebSocket bildirimi için)
+      cancelledOrdersData.push({
+        userId: order.userId,
+        orderId: order.id,
+        marketId: order.marketId,
+        orderType: order.type,
+        outcome: order.outcome,
+        quantity: order.quantity,
+        price: order.price,
+        refundAmount: refundAmount,
+        refundType: refundType
+      });
     }
 
     // 4. Kazanan hisseleri bul
@@ -230,6 +252,26 @@ class MarketService {
     }
 
     await t.commit();
+
+    // 🆕 İptal edilen emirler için WebSocket bildirimi gönder
+    for (const cancelledOrder of cancelledOrdersData) {
+      try {
+        await websocketServer.publishOrderCancelled(cancelledOrder.userId, {
+          orderId: cancelledOrder.orderId,
+          marketId: cancelledOrder.marketId,
+          marketTitle: market.title,
+          orderType: cancelledOrder.orderType,
+          outcome: cancelledOrder.outcome,
+          quantity: cancelledOrder.quantity,
+          price: cancelledOrder.price,
+          reason: 'market_resolved',
+          refundAmount: cancelledOrder.refundAmount,
+          refundType: cancelledOrder.refundType
+        });
+      } catch (error) {
+        console.error('Order cancelled WebSocket bildirimi hatası:', error.message);
+      }
+    }
 
     return {
       message: 'Pazar başarıyla sonuçlandırıldı ve ödemeler yapıldı.',

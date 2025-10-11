@@ -89,11 +89,11 @@ class WebSocketServer {
   }
 
   async handleMessage(ws, data) {
-    const { type, marketId } = data;
+    const { type, marketId, userId } = data;
 
     switch (type) {
       case 'subscribe':
-        await this.subscribeToMarket(ws, marketId);
+        await this.subscribeToMarket(ws, marketId, userId);
         break;
 
       case 'unsubscribe':
@@ -116,7 +116,7 @@ class WebSocketServer {
     }
   }
 
-  async subscribeToMarket(ws, marketId) {
+  async subscribeToMarket(ws, marketId, userId = null) {
     if (!marketId) {
       ws.send(JSON.stringify({
         type: 'error',
@@ -142,6 +142,11 @@ class WebSocketServer {
     this.clients.get(marketId).add(ws);
     ws.subscribedMarkets = ws.subscribedMarkets || new Set();
     ws.subscribedMarkets.add(marketId);
+    
+    // UserId'yi WebSocket'e ekle (kişiselleştirilmiş bildirimler için)
+    if (userId) {
+      ws.userId = userId;
+    }
 
     ws.send(JSON.stringify({
       type: 'subscribed',
@@ -206,6 +211,127 @@ class WebSocketServer {
     });
 
     console.log(`📡 ${marketId} için ${sentCount} client'a güncelleme gönderildi`);
+  }
+
+  // Belirli bir kullanıcıya mesaj gönder
+  sendToUser(userId, message) {
+    let sentCount = 0;
+    
+    // Tüm marketlerdeki clientları kontrol et
+    this.clients.forEach((clientSet) => {
+      clientSet.forEach((client) => {
+        // Client'a userId eklenmiş mi kontrol et (subscribe sırasında eklenebilir)
+        if (client.userId === userId && client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            ...message,
+            timestamp: new Date().toISOString()
+          }));
+          sentCount++;
+        }
+      });
+    });
+
+    if (sentCount > 0) {
+      console.log(`📧 User ${userId} için ${sentCount} client'a mesaj gönderildi: ${message.type}`);
+    }
+    
+    return sentCount;
+  }
+
+  // Yeni işlem bildirimi (tüm marketteki kullanıcılara)
+  async publishNewTrade(marketId, tradeData) {
+    try {
+      if (!this.clients.has(marketId)) return;
+
+      const message = JSON.stringify({
+        type: 'new_trade',
+        marketId,
+        data: {
+          tradeId: tradeData.tradeId,
+          buyerId: tradeData.buyerId,
+          sellerId: tradeData.sellerId,
+          outcome: tradeData.outcome,
+          quantity: tradeData.quantity,
+          price: tradeData.price,
+          total: tradeData.total,
+          timestamp: tradeData.timestamp
+        },
+        timestamp: new Date().toISOString()
+      });
+
+      let sentCount = 0;
+      this.clients.get(marketId).forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(message);
+          sentCount++;
+        }
+      });
+
+      console.log(`💹 ${marketId} için ${sentCount} client'a yeni trade bildirimi gönderildi`);
+    } catch (error) {
+      console.error('New trade publish hatası:', error);
+    }
+  }
+
+  // Emir eşleşmesi bildirimi (sadece ilgili kullanıcıya)
+  async publishOrderFilled(userId, orderData) {
+    try {
+      const message = {
+        type: 'my_order_filled',
+        data: {
+          orderId: orderData.orderId,
+          marketId: orderData.marketId,
+          marketTitle: orderData.marketTitle,
+          orderType: orderData.orderType,
+          outcome: orderData.outcome,
+          originalQuantity: orderData.originalQuantity,
+          filledQuantity: orderData.filledQuantity,
+          remainingQuantity: orderData.remainingQuantity,
+          price: orderData.price,
+          avgFillPrice: orderData.avgFillPrice,
+          status: orderData.status, // 'PARTIALLY_FILLED' veya 'FILLED'
+          lastTradePrice: orderData.lastTradePrice,
+          lastTradeQuantity: orderData.lastTradeQuantity
+        }
+      };
+
+      const sentCount = this.sendToUser(userId, message);
+      
+      if (sentCount === 0) {
+        console.log(`⚠️ User ${userId} için aktif WebSocket bağlantısı bulunamadı`);
+      }
+    } catch (error) {
+      console.error('Order filled publish hatası:', error);
+    }
+  }
+
+  // Emir iptal bildirimi (sadece ilgili kullanıcıya)
+  async publishOrderCancelled(userId, orderData) {
+    try {
+      const message = {
+        type: 'my_order_cancelled',
+        data: {
+          orderId: orderData.orderId,
+          marketId: orderData.marketId,
+          marketTitle: orderData.marketTitle,
+          orderType: orderData.orderType,
+          outcome: orderData.outcome,
+          quantity: orderData.quantity,
+          price: orderData.price,
+          reason: orderData.reason, // 'user_cancelled', 'market_closed', 'market_resolved'
+          refundAmount: orderData.refundAmount,
+          refundType: orderData.refundType // 'balance' veya 'shares'
+        }
+      };
+
+      const sentCount = this.sendToUser(userId, message);
+      
+      if (sentCount === 0) {
+        console.log(`⚠️ User ${userId} için aktif WebSocket bağlantısı bulunamadı`);
+      }
+    } catch (error) {
+      console.error('Order cancelled publish hatası:', error);
+    }
   }
 
   // Order service tarafından çağrılacak (emir değiştiğinde)
