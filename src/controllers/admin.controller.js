@@ -100,6 +100,72 @@ class AdminController {
       });
     }
   }
+
+  // Kullanıcıya para ekleme (admin only)
+  async addBalanceToUser(req, res) {
+    try {
+      const { id } = req.params;
+      const { amount, description } = req.body;
+
+      // Validasyon
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ 
+          message: 'Geçersiz miktar. Pozitif bir değer giriniz.' 
+        });
+      }
+
+      const result = await userService.addBalance(id, amount, description || 'Admin tarafından eklenen bakiye');
+      
+      res.status(200).json({ 
+        message: `${amount} TL başarıyla eklendi.`,
+        data: result
+      });
+    } catch (error) {
+      console.error('Bakiye ekleme hatası:', error);
+      res.status(400).json({ 
+        message: 'Bakiye eklenirken bir hata oluştu.', 
+        error: error.message 
+      });
+    }
+  }
+
+  // Tüm kullanıcıları listeleme (admin only)
+  async getAllUsers(req, res) {
+    try {
+      const { page = 1, limit = 50, search } = req.query;
+      const users = await userService.getAllUsers({ page, limit, search });
+      
+      res.status(200).json({ 
+        success: true,
+        data: users
+      });
+    } catch (error) {
+      console.error('Kullanıcı listeleme hatası:', error);
+      res.status(400).json({ 
+        message: 'Kullanıcılar listelenirken bir hata oluştu.', 
+        error: error.message 
+      });
+    }
+  }
+
+  // Tüm pazarları listeleme (admin görünümü)
+  async getAllMarkets(req, res) {
+    try {
+      const { status } = req.query;
+      const markets = await marketService.findAll(status ? { status } : {});
+      
+      res.status(200).json({ 
+        success: true,
+        data: markets
+      });
+    } catch (error) {
+      console.error('Pazar listeleme hatası:', error);
+      res.status(400).json({ 
+        message: 'Pazarlar listelenirken bir hata oluştu.', 
+        error: error.message 
+      });
+    }
+  }
 }
 
 module.exports = new AdminController();

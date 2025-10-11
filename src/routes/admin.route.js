@@ -13,34 +13,12 @@ router.post('/markets/:id/resolve',
   adminController.resolveMarket
 );
 
-// Pazar kapatma (close) - Yeni eklenen
+// Pazar kapatma (close)
 router.post('/markets/:id/close',
   authMiddleware,
   adminMiddleware,
   adminController.closeMarket
 );
-
-// Manuel market kapama
-router.post('/markets/:marketId/close', authMiddleware, adminMiddleware, async (req, res, next) => {
-  try {
-    const { marketId } = req.params;
-    const { result } = req.body; // true/false/null
-    
-    const closeResult = await marketAutomation.manualCloseMarket(
-      marketId, 
-      req.user.id, 
-      result
-    );
-    
-    res.status(200).json({
-      success: true,
-      message: 'Market başarıyla kapatıldı',
-      data: closeResult
-    });
-  } catch (error) {
-    next(error);
-  }
-});
 
 // Pazar oluşturma - Sadece adminler oluşturabilsin
 router.post('/markets',
@@ -54,6 +32,27 @@ router.patch('/users/:id/promote',
   authMiddleware,
   adminMiddleware,
   adminController.promoteToAdmin
+);
+
+// Kullanıcıya para ekleme
+router.post('/users/:id/add-balance',
+  authMiddleware,
+  adminMiddleware,
+  adminController.addBalanceToUser
+);
+
+// Tüm kullanıcıları listeleme
+router.get('/users',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getAllUsers
+);
+
+// Tüm pazarları listeleme (admin view)
+router.get('/markets',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getAllMarkets
 );
 
 module.exports = router;
