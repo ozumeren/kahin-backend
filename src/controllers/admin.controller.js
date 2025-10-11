@@ -1,6 +1,7 @@
 // src/controllers/admin.controller.js
 const marketService = require('../services/market.service');
 const userService = require('../services/user.service');
+const shareService = require('../services/share.service');
 
 class AdminController {
   // Pazar sonuçlandırma
@@ -162,6 +163,40 @@ class AdminController {
       console.error('Pazar listeleme hatası:', error);
       res.status(400).json({ 
         message: 'Pazarlar listelenirken bir hata oluştu.', 
+        error: error.message 
+      });
+    }
+  }
+
+  // Kullanıcıya hisse ekleme (admin only)
+  async addSharesToUser(req, res) {
+    try {
+      const { id } = req.params;
+      const { marketId, outcome, quantity } = req.body;
+
+      // Validasyon
+      if (!marketId || !outcome || !quantity || quantity <= 0) {
+        return res.status(400).json({ 
+          message: 'Pazar ID, sonuç (true/false) ve pozitif miktar gereklidir.' 
+        });
+      }
+
+      if (typeof outcome !== 'boolean') {
+        return res.status(400).json({ 
+          message: 'Sonuç boolean tipinde olmalıdır (true veya false).' 
+        });
+      }
+
+      const result = await shareService.addSharesAdmin(id, marketId, outcome, quantity);
+      
+      res.status(200).json({ 
+        message: `${quantity} adet hisse başarıyla eklendi.`,
+        data: result
+      });
+    } catch (error) {
+      console.error('Hisse ekleme hatası:', error);
+      res.status(400).json({ 
+        message: 'Hisse eklenirken bir hata oluştu.', 
         error: error.message 
       });
     }

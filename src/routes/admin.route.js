@@ -55,4 +55,11 @@ router.get('/markets',
   adminController.getAllMarkets
 );
 
+// Kullanıcıya hisse ekleme
+router.post('/users/:id/add-shares',
+  authMiddleware,
+  adminMiddleware,
+  adminController.addSharesToUser
+);
+
 module.exports = router;

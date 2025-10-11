@@ -53,6 +53,55 @@ class ShareService {
       throw error;
     }
   }
+
+  // Admin tarafından kullanıcıya direkt hisse ekleme (test/demo için)
+  async addSharesAdmin(userId, marketId, outcome, quantity) {
+    const t = await db.sequelize.transaction();
+
+    try {
+      // Kontroller
+      if (quantity <= 0) {
+        throw ApiError.badRequest('Miktar 0\'dan büyük olmalıdır.');
+      }
+
+      const market = await Market.findByPk(marketId, { transaction: t });
+      const user = await User.findByPk(userId, { transaction: t });
+
+      if (!market) throw ApiError.notFound('Pazar bulunamadı.');
+      if (!user) throw ApiError.notFound('Kullanıcı bulunamadı.');
+
+      // Mevcut hisse kaydını bul veya yeni oluştur
+      let share = await Share.findOne({
+        where: { userId, marketId, outcome },
+        transaction: t
+      });
+
+      if (share) {
+        // Mevcut hisseyi güncelle
+        share.quantity += quantity;
+        await share.save({ transaction: t });
+      } else {
+        // Yeni hisse kaydı oluştur
+        share = await Share.create({
+          userId,
+          marketId,
+          outcome,
+          quantity
+        }, { transaction: t });
+      }
+
+      await t.commit();
+
+      return { 
+        share,
+        message: `${quantity} adet ${outcome ? 'EVET' : 'HAYIR'} hissesi eklendi.`
+      };
+
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  }
 }
 
 module.exports = new ShareService();
