@@ -48,7 +48,7 @@ class ShareService {
       return { newBalance: user.balance };
 
     } catch (error) {
-      // Hata olursa, tüm değişiklikleri geri al.
+
       await t.rollback();
       throw error;
     }
