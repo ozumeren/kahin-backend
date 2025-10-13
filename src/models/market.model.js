@@ -29,6 +29,10 @@ const Market = sequelize.define('Market', {
   outcome: {
     type: DataTypes.BOOLEAN,
     allowNull: true // Pazar sonuçlanana kadar bu alan boş (null) olacak
+  },
+  image_url: {
+    type: DataTypes.STRING,
+    allowNull: true // Görsel opsiyonel
   }
 }, {
   tableName: 'markets'
