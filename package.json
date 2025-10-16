@@ -4,7 +4,9 @@
   "description": "",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "migrate": "node scripts/run-migration.js",
+    "migrate:down": "node scripts/run-migration.js down"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
