@@ -21,7 +21,7 @@ class MarketService {
   }
 
   async create(marketData) {
-    const { title, description, closing_date } = marketData;
+    const { title, description, closing_date, image_url } = marketData;
 
     if (!title || !closing_date) {
       throw ApiError.badRequest('Başlık ve kapanış tarihi zorunludur.');
@@ -31,6 +31,7 @@ class MarketService {
       title,
       description,
       closing_date,
+      image_url,
       status: 'open'
     });
 

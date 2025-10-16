@@ -21,6 +21,7 @@ const portfolioRoutes = require('./routes/portfolio.route');
 const adminRoutes = require('./routes/admin.route');
 const devRoutes = require('./routes/dev.route');
 const tradeRoutes = require('./routes/trade.route');
+const optionRoutes = require('./routes/option.route');
 
 const app = express();
 const server = http.createServer(app);
@@ -60,6 +61,7 @@ app.get('/', (req, res) => {
       transactions: '/api/v1/transactions',
       portfolio: '/api/v1/portfolio',
       trades: '/api/v1/trades',
+      options: '/api/v1/options',
       admin: '/api/v1/admin',
       websocket: 'wss://api.kahinmarket.com/ws'
     }
@@ -75,6 +77,7 @@ app.use('/api/v1/orders', orderRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
 app.use('/api/v1/portfolio', portfolioRoutes);
 app.use('/api/v1/trades', tradeRoutes);
+app.use('/api/v1/options', optionRoutes);
 app.use('/api/v1/admin', adminRoutes);
 
 // Dev route (sadece production dışında)
@@ -97,25 +100,28 @@ async function startServer() {
       console.log('✓ Redis zaten bağlı.');
     }
 
-    await websocketServer.initialize(server);
+    await db.sequelize.authenticate();
+    console.log('✓ Veritabanı bağlantısı başarılı.');
 
-    await db.sequelize.sync({ alter: true });
-    console.log('✓ Veritabanı senkronizasyonu başarılı.');
+    // Tabloları senkronize et (sadece development'ta)
+    if (process.env.NODE_ENV !== 'production') {
+      await db.sequelize.sync({ alter: false });
+      console.log('✓ Veritabanı modelleri senkronize edildi.');
+    }
+
+    websocketServer.init(server);
+    console.log('✓ WebSocket sunucusu başlatıldı.');
 
     server.listen(PORT, () => {
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`✓ HTTP Sunucu ${PORT} portunda başlatıldı.`);
-      console.log(`✓ WebSocket: wss://api.kahinmarket.com/ws`);
-      console.log(`✓ Ortam: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`✓ API Base URL: https://api.kahinmarket.com/api/v1`);
-      console.log(`✓ CORS: localhost:5173, localhost:5174, kahinmarket.com, app.kahinmarket.com`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`🚀 Sunucu ${PORT} portunda çalışıyor.`);
     });
+
   } catch (error) {
-    console.error('✗ Sunucu başlatılırken hata oluştu:', error);
+    console.error('❌ Sunucu başlatılamadı:', error);
     process.exit(1);
   }
 }
+
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
@@ -128,3 +134,10 @@ process.on('uncaughtException', (error) => {
 });
 
 startServer();
+
+process.on('SIGINT', async () => {
+  console.log('Sunucu kapatılıyor...');
+  await redisClient.quit();
+  await db.sequelize.close();
+  process.exit(0);
+});

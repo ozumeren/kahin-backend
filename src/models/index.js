@@ -7,6 +7,9 @@ const Share = require('./share.model');
 const Transaction = require('./transaction.model');
 const Order = require('./order.model');
 const Trade = require('./trade.model'); // ✅ Import ekle
+const MarketOption = require('./marketOption.model');
+const OptionPosition = require('./optionPosition.model');
+const OptionTrade = require('./optionTrade.model');
 
 // User <-> Share
 User.hasMany(Share, { foreignKey: 'userId' });
@@ -53,6 +56,55 @@ Trade.belongsTo(Order, { as: 'BuyOrder', foreignKey: 'buyOrderId' });
 Order.hasMany(Trade, { as: 'SellTrades', foreignKey: 'sellOrderId' });
 Trade.belongsTo(Order, { as: 'SellOrder', foreignKey: 'sellOrderId' });
 
+Market.hasMany(MarketOption, { 
+  as: 'options', 
+  foreignKey: 'market_id' 
+});
+MarketOption.belongsTo(Market, { 
+  as: 'market', 
+  foreignKey: 'market_id' 
+});
+
+// User <-> OptionPosition
+User.hasMany(OptionPosition, { 
+  as: 'optionPositions', 
+  foreignKey: 'user_id' 
+});
+OptionPosition.belongsTo(User, { 
+  as: 'user', 
+  foreignKey: 'user_id' 
+});
+
+// MarketOption <-> OptionPosition
+MarketOption.hasMany(OptionPosition, { 
+  as: 'positions', 
+  foreignKey: 'option_id' 
+});
+OptionPosition.belongsTo(MarketOption, { 
+  as: 'option', 
+  foreignKey: 'option_id' 
+});
+
+// User <-> OptionTrade
+User.hasMany(OptionTrade, { 
+  as: 'optionTrades', 
+  foreignKey: 'user_id' 
+});
+OptionTrade.belongsTo(User, { 
+  as: 'user', 
+  foreignKey: 'user_id' 
+});
+
+// MarketOption <-> OptionTrade
+MarketOption.hasMany(OptionTrade, { 
+  as: 'trades', 
+  foreignKey: 'option_id' 
+});
+OptionTrade.belongsTo(MarketOption, { 
+  as: 'option', 
+  foreignKey: 'option_id' 
+});
+
 const db = {
   sequelize,
   Sequelize,
@@ -61,7 +113,12 @@ const db = {
   Share,
   Transaction,
   Order,
-  Trade // ✅ Export ekle
+  Trade,
+  // YENİ modeller
+  MarketOption,
+  OptionPosition,
+  OptionTrade
 };
+
 
 module.exports = db;
