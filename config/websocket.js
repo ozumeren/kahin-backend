@@ -243,18 +243,27 @@ class WebSocketServer {
   // Belirli bir kullanıcıya mesaj gönder
   sendToUser(userId, message) {
     let sentCount = 0;
+    let totalClients = 0;
+    let matchingUserClients = 0;
     
     // Tüm WebSocket client'larını kontrol et (wss.clients)
     this.wss.clients.forEach((client) => {
+      totalClients++;
+      
       // Client'a userId eklenmiş mi kontrol et
-      if (client.userId === userId && client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({
-          ...message,
-          timestamp: new Date().toISOString()
-        }));
-        sentCount++;
+      if (client.userId === userId) {
+        matchingUserClients++;
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            ...message,
+            timestamp: new Date().toISOString()
+          }));
+          sentCount++;
+        }
       }
     });
+    
+    console.log(`📊 sendToUser Debug - Target userId: ${userId}, Total clients: ${totalClients}, Matching user clients: ${matchingUserClients}, Sent: ${sentCount}`);
     
     return sentCount;
   }
@@ -365,7 +374,8 @@ class WebSocketServer {
         }
       };
 
-      this.sendToUser(userId, message);
+      const sentCount = this.sendToUser(userId, message);
+      console.log(`💰 User ${userId} için bakiye güncellemesi gönderildi (${sentCount} client): ${newBalance}`);
     } catch (error) {
       console.error('Balance update publish hatası:', error);
     }
