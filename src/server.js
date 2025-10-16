@@ -7,8 +7,9 @@ const cookieParser = require('cookie-parser');
 const http = require('http');
 const db = require('./models');
 const redisClient = require('../config/redis');
-// const websocketServer = require('../config/websocket');
+const websocketServer = require('../config/websocket');
 const { errorHandler, notFoundHandler } = require('./middlewares/error.middleware');
+const migration = require('../migrations/add-multiple-choice-support');
 
 // routes import...
 const authRoutes = require('./routes/auth.route');
@@ -109,8 +110,8 @@ async function startServer() {
       console.log('✓ Veritabanı modelleri senkronize edildi.');
     }
 
-    // websocketServer.init(server);
-    // console.log('✓ WebSocket sunucusu başlatıldı.');
+    websocketServer.init(server);
+    console.log('✓ WebSocket sunucusu başlatıldı.');
 
     server.listen(PORT, () => {
       console.log(`🚀 Sunucu ${PORT} portunda çalışıyor.`);
@@ -141,3 +142,55 @@ process.on('SIGINT', async () => {
   await db.sequelize.close();
   process.exit(0);
 });
+
+async function startServer() {
+  try {
+    if (!redisClient.isOpen) {
+      await redisClient.connect();
+      console.log('✓ Redis bağlantısı başarıyla kuruldu.');
+    } else {
+      console.log('✓ Redis zaten bağlı.');
+    }
+
+    await db.sequelize.authenticate();
+    console.log('✓ Veritabanı bağlantısı başarılı.');
+
+    // ✅ YENİ: Migration'ı çalıştır (sadece bir kez)
+    try {
+      console.log('🔄 Migration kontrol ediliyor...');
+      await migration.up(db.sequelize.queryInterface, db.Sequelize);
+      console.log('✅ Migration tamamlandı veya zaten uygulanmış!');
+    } catch (error) {
+      // Migration zaten uygulanmışsa hata verir, bu normaldir
+      if (error.message?.includes('already exists') || error.message?.includes('duplicate')) {
+        console.log('ℹ️ Migration zaten uygulanmış, devam ediliyor...');
+      } else {
+        console.error('⚠️ Migration hatası:', error.message);
+        // Migration hatası sunucuyu durdurmasın
+      }
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      await db.sequelize.sync({ alter: false });
+      console.log('✓ Veritabanı modelleri senkronize edildi.');
+    }
+
+    await websocketServer.initialize(server);
+    console.log('✓ WebSocket sunucusu başlatıldı.');
+
+    server.listen(PORT, () => {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`✓ HTTP Sunucu ${PORT} portunda başlatıldı.`);
+      console.log(`✓ WebSocket: wss://api.kahinmarket.com/ws`);
+      console.log(`✓ Ortam: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`✓ API Base URL: https://api.kahinmarket.com/api/v1`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    });
+
+  } catch (error) {
+    console.error('❌ Sunucu başlatılamadı:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
