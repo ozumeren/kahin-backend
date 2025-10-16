@@ -7,7 +7,7 @@ const cookieParser = require('cookie-parser');
 const http = require('http');
 const db = require('./models');
 const redisClient = require('../config/redis');
-const websocketServer = require('../config/websocket');
+// const websocketServer = require('../config/websocket');
 const { errorHandler, notFoundHandler } = require('./middlewares/error.middleware');
 
 // routes import...
@@ -109,8 +109,8 @@ async function startServer() {
       console.log('✓ Veritabanı modelleri senkronize edildi.');
     }
 
-    websocketServer.init(server);
-    console.log('✓ WebSocket sunucusu başlatıldı.');
+    // websocketServer.init(server);
+    // console.log('✓ WebSocket sunucusu başlatıldı.');
 
     server.listen(PORT, () => {
       console.log(`🚀 Sunucu ${PORT} portunda çalışıyor.`);
