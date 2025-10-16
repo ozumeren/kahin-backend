@@ -92,56 +92,6 @@ app.use(notFoundHandler);
 // Error Handler
 app.use(errorHandler);
 
-async function startServer() {
-  try {
-    if (!redisClient.isOpen) {
-      await redisClient.connect();
-      console.log('✓ Redis bağlantısı başarıyla kuruldu.');
-    } else {
-      console.log('✓ Redis zaten bağlı.');
-    }
-
-    await db.sequelize.authenticate();
-    console.log('✓ Veritabanı bağlantısı başarılı.');
-
-    // Tabloları senkronize et (sadece development'ta)
-    if (process.env.NODE_ENV !== 'production') {
-      await db.sequelize.sync({ alter: false });
-      console.log('✓ Veritabanı modelleri senkronize edildi.');
-    }
-
-    websocketServer.init(server);
-    console.log('✓ WebSocket sunucusu başlatıldı.');
-
-    server.listen(PORT, () => {
-      console.log(`🚀 Sunucu ${PORT} portunda çalışıyor.`);
-    });
-
-  } catch (error) {
-    console.error('❌ Sunucu başlatılamadı:', error);
-    process.exit(1);
-  }
-}
-
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  process.exit(1);
-});
-
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
-  process.exit(1);
-});
-
-startServer();
-
-process.on('SIGINT', async () => {
-  console.log('Sunucu kapatılıyor...');
-  await redisClient.quit();
-  await db.sequelize.close();
-  process.exit(0);
-});
 
 async function startServer() {
   try {
@@ -155,18 +105,16 @@ async function startServer() {
     await db.sequelize.authenticate();
     console.log('✓ Veritabanı bağlantısı başarılı.');
 
-    // ✅ YENİ: Migration'ı çalıştır (sadece bir kez)
+    // Migration'ı çalıştır
     try {
       console.log('🔄 Migration kontrol ediliyor...');
       await migration.up(db.sequelize.queryInterface, db.Sequelize);
-      console.log('✅ Migration tamamlandı veya zaten uygulanmış!');
+      console.log('✅ Migration tamamlandı!');
     } catch (error) {
-      // Migration zaten uygulanmışsa hata verir, bu normaldir
       if (error.message?.includes('already exists') || error.message?.includes('duplicate')) {
-        console.log('ℹ️ Migration zaten uygulanmış, devam ediliyor...');
+        console.log('ℹ️ Migration zaten uygulanmış.');
       } else {
         console.error('⚠️ Migration hatası:', error.message);
-        // Migration hatası sunucuyu durdurmasın
       }
     }
 
@@ -183,7 +131,6 @@ async function startServer() {
       console.log(`✓ HTTP Sunucu ${PORT} portunda başlatıldı.`);
       console.log(`✓ WebSocket: wss://api.kahinmarket.com/ws`);
       console.log(`✓ Ortam: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`✓ API Base URL: https://api.kahinmarket.com/api/v1`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     });
 
@@ -192,5 +139,12 @@ async function startServer() {
     process.exit(1);
   }
 }
+
+process.on('SIGINT', async () => {
+  console.log('Sunucu kapatılıyor...');
+  await redisClient.quit();
+  await db.sequelize.close();
+  process.exit(0);
+});
 
 startServer();
