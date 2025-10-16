@@ -23,7 +23,7 @@ module.exports = {
       }, { transaction });
 
       await queryInterface.addColumn('markets', 'category', {
-        type: DataTypes.STRING,
+        type: Sequelize.STRING,  // ✅ DataTypes değil, Sequelize!
         allowNull: true
       }, { transaction });
 
