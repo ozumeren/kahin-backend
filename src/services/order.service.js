@@ -27,6 +27,12 @@ class OrderService {
       if (!market) throw ApiError.notFound('Pazar bulunamadı.');
       if (market.status !== 'open') throw ApiError.badRequest('Pazar işlem için açık değil.');
       
+      // ✅ YENİ: Kapanış tarihi kontrolü (real-time)
+      const now = new Date();
+      if (market.closing_date && new Date(market.closing_date) <= now) {
+        throw ApiError.badRequest('Pazar kapanış saati geçmiş, yeni emir kabul edilmiyor.');
+      }
+      
       // ✅ Fiyat validasyonu (0.01 - 0.99 aralığı)
       if (price < 0.01 || price > 0.99) {
         throw ApiError.badRequest('Fiyat 0.01 TL ile 0.99 TL arasında olmalıdır.');

@@ -17,8 +17,8 @@ class MarketAutomationService {
       return;
     }
 
-    // Her dakika kontrol et (production'da 5 dakikada bir yapabilirsiniz)
-    this.cronJob = cron.schedule('* * * * *', async () => {
+    // ✅ Her 10 saniyede bir kontrol et (çok daha güvenli)
+    this.cronJob = cron.schedule('*/10 * * * * *', async () => {
       await this.checkAndCloseExpiredMarkets();
     }, {
       scheduled: false,
@@ -27,7 +27,7 @@ class MarketAutomationService {
 
     this.cronJob.start();
     this.isRunning = true;
-    console.log('✓ Market otomasyonu başlatıldı (her dakika kontrol)');
+    console.log('✓ Market otomasyonu başlatıldı (her 10 saniyede kontrol)');
   }
 
   // Otomasyonu durdur
@@ -64,12 +64,34 @@ class MarketAutomationService {
 
       console.log(`🕐 ${expiredMarkets.length} adet süresi dolmuş market bulundu, kapatılıyor...`);
 
+      // ✅ Tüm bakiye güncellemelerini topla
+      const allBalanceUpdates = [];
+      
       for (const market of expiredMarkets) {
-        await this.closeMarket(market, t);
+        const balanceUpdates = await this.closeMarket(market, t);
+        if (balanceUpdates && balanceUpdates.length > 0) {
+          allBalanceUpdates.push(...balanceUpdates);
+        }
       }
 
       await t.commit();
-      console.log(` ${expiredMarkets.length} market başarıyla kapatıldı.`);
+      
+      // ✅ Transaction commit edildikten SONRA bakiye güncellemelerini gönder
+      const uniqueBalanceUpdates = new Map();
+      allBalanceUpdates.forEach(update => {
+        uniqueBalanceUpdates.set(update.userId, update.balance);
+      });
+
+      for (const [userId, balance] of uniqueBalanceUpdates.entries()) {
+        try {
+          console.log(`💰 Market Automation - Bakiye güncellemesi: userId=${userId}, balance=${balance}`);
+          await websocketServer.publishBalanceUpdate(userId, balance);
+        } catch (error) {
+          console.error('Balance update WebSocket hatası:', error.message);
+        }
+      }
+      
+      console.log(`✅ ${expiredMarkets.length} market başarıyla kapatıldı.`);
 
     } catch (error) {
       await t.rollback();
@@ -77,19 +99,19 @@ class MarketAutomationService {
     }
   }
 
-  // Tek bir marketi kapat
+    // Tek bir marketi kapat
   async closeMarket(market, transaction) {
     const t = transaction;
 
     try {
-      console.log(`Market kapatılıyor: ${market.title} (${market.id})`);
+      console.log(`📊 Market kapatılıyor: ${market.title} (${market.id})`);
 
       // 1. Market durumunu "closed" yap
       market.status = 'closed';
       await market.save({ transaction: t });
 
       // 2. Açık emirleri iptal et ve para iadesi yap
-      await this.cancelOpenOrders(market.id, t);
+      const balanceUpdates = await this.cancelOpenOrders(market.id, t);
 
       // 3. Redis'teki order book'u temizle
       await this.clearOrderBookFromRedis(market.id);
@@ -101,10 +123,13 @@ class MarketAutomationService {
       // 5. WebSocket ile market kapanma bildirimi gönder
       await this.notifyMarketClosed(market.id);
 
-      console.log(`Market kapatıldı: ${market.title}`);
+      console.log(`✅ Market kapatıldı: ${market.title}`);
+      
+      // ✅ Return balance updates for sending after transaction commit
+      return balanceUpdates;
 
     } catch (error) {
-      console.error(`Market kapatma hatası (${market.id}):`, error);
+      console.error(`❌ Market kapatma hatası (${market.id}):`, error);
       throw error;
     }
   }
@@ -124,6 +149,9 @@ class MarketAutomationService {
 
     console.log(`${openOrders.length} adet açık emir iptal ediliyor...`);
 
+    // ✅ Bakiye güncellemelerini topla (transaction sonrası WebSocket için)
+    const balanceUpdates = [];
+
     for (const order of openOrders) {
       // BUY emirleri için para iadesi
       if (order.type === 'BUY') {
@@ -137,6 +165,9 @@ class MarketAutomationService {
         await user.save({ transaction: t });
 
         console.log(`BUY emir iadesi: User ${order.userId} -> ${refundAmount} TL`);
+        
+        // ✅ Bakiye güncellemesini kaydet
+        balanceUpdates.push({ userId: user.id, balance: user.balance });
       }
 
       // SELL emirleri için hisse iadesi
@@ -169,7 +200,29 @@ class MarketAutomationService {
       order.status = 'CANCELLED';
       order.cancelled_reason = 'MARKET_CLOSED';
       await order.save({ transaction: t });
+      
+      // ✅ WebSocket order cancelled bildirimi için veri hazırla
+      try {
+        const market = await Market.findByPk(marketId, { transaction: t });
+        await websocketServer.publishOrderCancelled(order.userId, {
+          orderId: order.id,
+          marketId: order.marketId,
+          marketTitle: market.title,
+          orderType: order.type,
+          outcome: order.outcome,
+          quantity: order.quantity,
+          price: order.price,
+          reason: 'market_closed',
+          refundAmount: order.type === 'BUY' ? parseFloat(order.quantity) * parseFloat(order.price) : 0,
+          refundType: order.type === 'BUY' ? 'balance' : 'shares'
+        });
+      } catch (wsError) {
+        console.error('Order cancelled WebSocket hatası:', wsError.message);
+      }
     }
+    
+    // ✅ Transaction commit edildikten SONRA bakiye güncellemelerini gönder
+    return balanceUpdates;
   }
 
   // Redis'teki order book'u temizle
