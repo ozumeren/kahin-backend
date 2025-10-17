@@ -23,6 +23,7 @@ const adminRoutes = require('./routes/admin.route');
 const devRoutes = require('./routes/dev.route');
 const tradeRoutes = require('./routes/trade.route');
 const optionRoutes = require('./routes/option.route');
+const marketService = require('./services/market.service');
 
 const app = express();
 const server = http.createServer(app);
@@ -125,6 +126,9 @@ async function startServer() {
 
     await websocketServer.initialize(server);
     console.log('✓ WebSocket sunucusu başlatıldı.');
+
+    // Order book'ları initialize et
+    await marketService.initializeAllOrderBooks();
 
     server.listen(PORT, () => {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

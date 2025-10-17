@@ -7,6 +7,11 @@ const ApiError = require('../utils/apiError');
 const websocketServer = require('../../config/websocket');
 
 class MarketService {
+  constructor() {
+    // Redis'te order book'u populate edilmiş marketleri cache'le
+    this.populatedMarkets = new Set();
+  }
+
   async findAll(queryOptions = {}) {
     const markets = await Market.findAll({ where: queryOptions });
     return markets;
@@ -299,7 +304,20 @@ class MarketService {
       throw ApiError.notFound('Pazar bulunamadı.');
     }
 
-    // 2. Redis'ten order book verilerini çek
+    // 2. Bu market daha önce populate edilmiş mi kontrol et
+    if (!this.populatedMarkets.has(marketId)) {
+      const redisHasData = await this.checkRedisOrderBookExists(marketId);
+      
+      if (!redisHasData) {
+        console.log(`📚 Redis'te order book yok, database'den yükleniyor: ${marketId}`);
+        await this.populateOrderBookFromDatabase(marketId);
+      }
+      
+      // Cache'e ekle ki bir daha kontrol etmeyelim
+      this.populatedMarkets.add(marketId);
+    }
+
+    // 4. Redis'ten order book verilerini çek
     const orderBook = {
       marketId: market.id,
       marketTitle: market.title,
@@ -315,7 +333,7 @@ class MarketService {
       }
     };
 
-    // 3. Her outcome için Redis anahtarları
+    // 5. Her outcome için Redis anahtarları
     const outcomes = [
       { outcome: 'yes', value: true },
       { outcome: 'no', value: false }
@@ -421,6 +439,101 @@ class MarketService {
     const bestBid = parseFloat(bids[0].price);
     const bestAsk = parseFloat(asks[0].price);
     return ((bestBid + bestAsk) / 2).toFixed(2);
+  }
+
+  // Redis'te order book'un olup olmadığını kontrol et
+  async checkRedisOrderBookExists(marketId) {
+    try {
+      const keys = [
+        `market:${marketId}:yes:bids`,
+        `market:${marketId}:yes:asks`, 
+        `market:${marketId}:no:bids`,
+        `market:${marketId}:no:asks`
+      ];
+      
+      // En az bir key'de veri varsa Redis'te order book var demektir
+      for (const key of keys) {
+        const count = await redisClient.zCard(key);
+        if (count > 0) {
+          return true;
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Redis order book check hatası:', error);
+      return false;
+    }
+  }
+
+  // Database'den açık emirleri yükleyip Redis'e populate et
+  async populateOrderBookFromDatabase(marketId) {
+    try {
+      // Database'den bu market'e ait açık emirleri çek
+      const openOrders = await Order.findAll({
+        where: {
+          marketId,
+          status: 'OPEN'
+        },
+        include: [{
+          model: User,
+          attributes: ['id']
+        }],
+        order: [['createdAt', 'ASC']] // Eski emirler önce
+      });
+
+      console.log(`📊 Database'den ${openOrders.length} açık emir yükleniyor...`);
+
+      // Her emri Redis'e ekle
+      for (const order of openOrders) {
+        const outcomeString = order.outcome ? 'yes' : 'no';
+        const orderType = order.type === 'BUY' ? 'bids' : 'asks';
+        const redisKey = `market:${marketId}:${outcomeString}:${orderType}`;
+        
+        // Redis'e emir ekle (userId ile birlikte)
+        await redisClient.zAdd(redisKey, {
+          score: parseFloat(order.price),
+          value: `${order.id}:${order.quantity}:${order.userId || ''}`
+        });
+      }
+
+      console.log(`✅ Order book Redis'e yüklendi: ${marketId}`);
+      
+      // Cache'e ekle
+      this.populatedMarkets.add(marketId);
+    } catch (error) {
+      console.error('Database order book populate hatası:', error);
+      throw error;
+    }
+  }
+
+  // Tüm aktif marketler için order book'ları initialize et
+  async initializeAllOrderBooks() {
+    try {
+      const activeMarkets = await Market.findAll({
+        where: {
+          status: 'open'
+        },
+        attributes: ['id', 'title']
+      });
+
+      console.log(`🔄 ${activeMarkets.length} aktif market için order book initialize ediliyor...`);
+
+      for (const market of activeMarkets) {
+        const hasData = await this.checkRedisOrderBookExists(market.id);
+        if (!hasData) {
+          await this.populateOrderBookFromDatabase(market.id);
+          console.log(`📚 ${market.title} order book'u yüklendi`);
+        } else {
+          // Cache'e ekle ki sonraki çağrılarda kontrol etmesin
+          this.populatedMarkets.add(market.id);
+        }
+      }
+
+      console.log('✅ Tüm order booklar initialize edildi');
+    } catch (error) {
+      console.error('Order book initialization hatası:', error);
+    }
   }
 }
 

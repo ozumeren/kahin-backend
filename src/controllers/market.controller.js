@@ -137,7 +137,7 @@ class MarketController {
     }
   }
 
-  // Order book'u getir (sadece binary marketler için)
+  // Order book'u getir
   async getOrderBook(req, res, next) {
     try {
       const { id } = req.params;
@@ -147,13 +147,6 @@ class MarketController {
         return res.status(404).json({
           success: false,
           message: 'Pazar bulunamadı'
-        });
-      }
-
-      if (market.market_type !== 'binary') {
-        return res.status(400).json({
-          success: false,
-          message: 'Order book sadece binary marketler için geçerlidir'
         });
       }
 

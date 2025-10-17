@@ -215,6 +215,7 @@ class OrderService {
           await newBuyOrder.save({ transaction: t });
           
           // Redis'e ekle (userId ile birlikte)
+          console.log(`📊 Redis'e BUY emri ekleniyor: ${bidsKey} -> ${newBuyOrder.id}:${quantity}:${userId} @ ${price}`);
           await redisClient.zAdd(bidsKey, { 
             score: price, 
             value: `${newBuyOrder.id}:${quantity}:${userId}` 
@@ -435,6 +436,7 @@ class OrderService {
           await newSellOrder.save({ transaction: t });
           
           // Redis'e ekle (userId ile birlikte)
+          console.log(`📊 Redis'e SELL emri ekleniyor: ${asksKey} -> ${newSellOrder.id}:${quantity}:${userId} @ ${price}`);
           await redisClient.zAdd(asksKey, { 
             score: price, 
             value: `${newSellOrder.id}:${quantity}:${userId}` 
@@ -578,6 +580,7 @@ class OrderService {
 
       for (const [userId, balance] of uniqueBalanceUpdates.entries()) {
         try {
+          console.log(`💰 Order Service - Bakiye güncellemesi gönderiliyor: userId=${userId} (type: ${typeof userId}), balance=${balance}`);
           await websocketServer.publishBalanceUpdate(userId, balance);
         } catch (error) {
           console.error('Balance update WebSocket bildirimi hatası:', error.message);

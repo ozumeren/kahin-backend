@@ -131,7 +131,7 @@ class WebSocketServer {
     }
 
     // UserId'yi WebSocket'e ekle (kişiselleştirilmiş bildirimler için)
-    ws.userId = userId;
+    ws.userId = String(userId);
 
     ws.send(JSON.stringify({
       type: 'user_subscribed',
@@ -172,7 +172,7 @@ class WebSocketServer {
     
     // UserId'yi WebSocket'e ekle (kişiselleştirilmiş bildirimler için)
     if (userId) {
-      ws.userId = userId;
+      ws.userId = String(userId);
     }
 
     ws.send(JSON.stringify({
@@ -250,8 +250,8 @@ class WebSocketServer {
     this.wss.clients.forEach((client) => {
       totalClients++;
       
-      // Client'a userId eklenmiş mi kontrol et
-      if (client.userId === userId) {
+      // Client'a userId eklenmiş mi kontrol et (string karşılaştırması)
+      if (client.userId === String(userId)) {
         matchingUserClients++;
         if (client.readyState === WebSocket.OPEN) {
           client.send(JSON.stringify({
