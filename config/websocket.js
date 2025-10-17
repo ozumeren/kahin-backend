@@ -131,7 +131,8 @@ class WebSocketServer {
     }
 
     // UserId'yi WebSocket'e ekle (kişiselleştirilmiş bildirimler için)
-    ws.userId = String(userId);
+    const userIdString = String(userId);
+    ws.userId = userIdString;
 
     ws.send(JSON.stringify({
       type: 'user_subscribed',
@@ -140,7 +141,7 @@ class WebSocketServer {
       timestamp: new Date().toISOString()
     }));
 
-    console.log(`👤 User ${userId} subscribed to personal notifications`);
+    console.log(`👤 User subscribed - userId: ${userId} (type: ${typeof userId}), stored as: ${userIdString} (type: ${typeof userIdString})`);
   }
 
   async subscribeToMarket(ws, marketId, userId = null) {
@@ -245,25 +246,32 @@ class WebSocketServer {
     let sentCount = 0;
     let totalClients = 0;
     let matchingUserClients = 0;
+    const targetUserId = String(userId);
+    
+    console.log(`📊 sendToUser Called - Target userId: ${userId} (type: ${typeof userId}), converted to: ${targetUserId}`);
     
     // Tüm WebSocket client'larını kontrol et (wss.clients)
     this.wss.clients.forEach((client) => {
       totalClients++;
       
+      console.log(`  📊 Checking client - userId: ${client.userId} (type: ${typeof client.userId}), readyState: ${client.readyState}`);
+      
       // Client'a userId eklenmiş mi kontrol et (string karşılaştırması)
-      if (client.userId === String(userId)) {
+      if (client.userId === targetUserId) {
         matchingUserClients++;
+        console.log(`  ✅ Match found! readyState: ${client.readyState} (OPEN=${WebSocket.OPEN})`);
         if (client.readyState === WebSocket.OPEN) {
           client.send(JSON.stringify({
             ...message,
             timestamp: new Date().toISOString()
           }));
           sentCount++;
+          console.log(`  ✅ Message sent successfully`);
         }
       }
     });
     
-    console.log(`📊 sendToUser Debug - Target userId: ${userId}, Total clients: ${totalClients}, Matching user clients: ${matchingUserClients}, Sent: ${sentCount}`);
+    console.log(`📊 sendToUser Summary - Target: ${targetUserId}, Total clients: ${totalClients}, Matching: ${matchingUserClients}, Sent: ${sentCount}`);
     
     return sentCount;
   }
