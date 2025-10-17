@@ -84,58 +84,90 @@ class MarketController {
   }
 
   // Tek bir pazarın detayını getir
-  async getMarketById(req, res, next) {
-    try {
-      const { id } = req.params;
-      const market = await marketService.findById(id);
+  // Tek bir pazarın detayını getir
+async getMarketById(req, res, next) {
+  try {
+    const { id } = req.params;
+    const market = await marketService.findById(id);
 
-      if (!market) {
-        return res.status(404).json({
-          success: false,
-          message: 'Pazar bulunamadı'
-        });
-      }
-
-      const marketData = market.toJSON();
-
-      // Options'ları dahil et
-      const options = await MarketOption.findAll({
-        where: { market_id: id },
-        order: [['option_order', 'ASC']],
-        raw: true
+    if (!market) {
+      return res.status(404).json({
+        success: false,
+        message: 'Pazar bulunamadı'
       });
-      
-      marketData.options = options || [];
-
-      // Volume hesapla
-      const trades = await Trade.findAll({
-        where: { marketId: id },
-        attributes: ['total'],
-        raw: true
-      });
-      
-      marketData.volume = trades.reduce((sum, trade) => {
-        return sum + parseFloat(trade.total || 0);
-      }, 0).toFixed(2);
-
-      // Binary market için order book
-      if (market.market_type === 'binary') {
-        try {
-          const orderBook = await marketService.getOrderBook(id);
-          marketData.orderBook = orderBook;
-        } catch (error) {
-          marketData.orderBook = null;
-        }
-      }
-
-      res.status(200).json({
-        success: true,
-        data: marketData
-      });
-    } catch (error) {
-      next(error);
     }
+
+    const marketData = market.toJSON();
+
+    // Options'ları dahil et
+    const options = await MarketOption.findAll({
+      where: { market_id: id },
+      order: [['option_order', 'ASC']],
+      raw: true  // ✅ raw: true ekleyin
+    });
+    
+    // ✅ Options'ı düzgün formatta ekle
+    marketData.options = options.map(opt => ({
+      id: opt.id,
+      market_id: opt.market_id,
+      option_text: opt.option_text,
+      option_image_url: opt.option_image_url,
+      option_order: opt.option_order
+    }));
+
+    // Volume hesapla
+    const trades = await Trade.findAll({
+      where: { marketId: id },
+      attributes: ['total'],
+      raw: true
+    });
+    
+    marketData.volume = trades.reduce((sum, trade) => {
+      return sum + parseFloat(trade.total || 0);
+    }, 0).toFixed(2);
+
+    // Unique trader count hesapla
+    const uniqueTraders = await Trade.findAll({
+      where: { marketId: id },
+      attributes: ['buyerId', 'sellerId'],
+      raw: true
+    });
+    
+    const traderSet = new Set();
+    uniqueTraders.forEach(trade => {
+      traderSet.add(trade.buyerId);
+      traderSet.add(trade.sellerId);
+    });
+    
+    marketData.tradersCount = traderSet.size;
+
+    // Binary market için order book
+    if (market.market_type === 'binary') {
+      try {
+        const orderBook = await marketService.getOrderBook(id);
+        marketData.orderBook = orderBook;
+      } catch (error) {
+        console.error('Order book hatası:', error);
+        marketData.orderBook = null;
+      }
+    }
+
+    // ✅ Response'u göndermeden önce validate et
+    const responseJson = JSON.stringify({
+      success: true,
+      data: marketData
+    });
+
+    res.status(200).json({
+      success: true,
+      data: marketData
+    });
+    
+  } catch (error) {
+    console.error('getMarketById error:', error);
+    next(error);
   }
+}
 
   // Order book'u getir
   async getOrderBook(req, res, next) {
