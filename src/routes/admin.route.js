@@ -6,6 +6,20 @@ const authMiddleware = require('../middlewares/auth.middleware');
 const adminMiddleware = require('../middlewares/admin.middleware');
 const marketAutomation = require('../services/market.automation.service');
 
+// ✨ YENİ - Pazar güncelleme
+router.put('/markets/:id', 
+  authMiddleware, 
+  adminMiddleware, 
+  adminController.updateMarket
+);
+
+// ✨ YENİ - Pazar silme
+router.delete('/markets/:id', 
+  authMiddleware, 
+  adminMiddleware, 
+  adminController.deleteMarket
+);
+
 // Pazar sonuçlandırma (resolve)
 router.post('/markets/:id/resolve', 
   authMiddleware, 

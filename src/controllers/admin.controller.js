@@ -12,14 +12,12 @@ class AdminController {
       const { id } = req.params;
       const { outcome } = req.body;
 
-      // Outcome kontrolü
       if (outcome === null || outcome === undefined) {
         return res.status(400).json({ 
           message: 'Sonuç (outcome) belirtilmelidir. true (Evet) veya false (Hayır) olmalıdır.' 
         });
       }
 
-      // Outcome boolean olmalı
       if (typeof outcome !== 'boolean') {
         return res.status(400).json({ 
           message: 'Sonuç boolean tipinde olmalıdır: true veya false' 
@@ -41,7 +39,7 @@ class AdminController {
     }
   }
 
-  // Pazar kapatma (bahisleri durdurma)
+  // Pazar kapatma
   async closeMarket(req, res) {
     try {
       const { id } = req.params;
@@ -60,20 +58,194 @@ class AdminController {
     }
   }
 
-  // Yeni pazar oluşturma (sadece admin)
-  async createMarket(req, res) {
+  // ✨ YENİ - Market Güncelleme
+  async updateMarket(req, res) {
     try {
-      const newMarket = await marketService.create(req.body);
+      const { id } = req.params;
+      const { title, description, closing_date, image_url, category } = req.body;
+
+      const market = await Market.findByPk(id);
       
-      res.status(201).json({ 
-        message: 'Pazar başarıyla oluşturuldu.', 
-        market: newMarket 
+      if (!market) {
+        return res.status(404).json({ 
+          success: false,
+          message: 'Market bulunamadı' 
+        });
+      }
+
+      // Sonuçlandırılmış marketler güncellenemez
+      if (market.status === 'resolved') {
+        return res.status(400).json({ 
+          success: false,
+          message: 'Sonuçlandırılmış marketler güncellenemez' 
+        });
+      }
+
+      // Güncelleme yapılacak alanlar
+      const updateData = {};
+      if (title !== undefined) updateData.title = title;
+      if (description !== undefined) updateData.description = description;
+      if (closing_date !== undefined) updateData.closing_date = closing_date;
+      if (image_url !== undefined) updateData.image_url = image_url;
+      if (category !== undefined) updateData.category = category;
+
+      await market.update(updateData);
+
+      res.status(200).json({ 
+        success: true,
+        message: 'Market başarıyla güncellendi',
+        market 
       });
     } catch (error) {
-      console.error('Pazar oluşturma hatası:', error);
+      console.error('Market güncelleme hatası:', error);
       res.status(400).json({ 
-        message: 'Pazar oluşturulurken bir hata oluştu.', 
+        success: false,
+        message: 'Market güncellenirken bir hata oluştu', 
         error: error.message 
+      });
+    }
+  }
+
+  // ✨ YENİ - Market Silme
+  async deleteMarket(req, res) {
+    const transaction = await db.sequelize.transaction();
+    
+    try {
+      const { id } = req.params;
+
+      const market = await Market.findByPk(id, {
+        include: [{
+          model: MarketOption,
+          as: 'options'
+        }],
+        transaction
+      });
+      
+      if (!market) {
+        await transaction.rollback();
+        return res.status(404).json({ 
+          success: false,
+          message: 'Market bulunamadı' 
+        });
+      }
+
+      // Sonuçlandırılmış marketler silinemez (isteğe bağlı kısıtlama)
+      if (market.status === 'resolved') {
+        await transaction.rollback();
+        return res.status(400).json({ 
+          success: false,
+          message: 'Sonuçlandırılmış marketler silinemez' 
+        });
+      }
+
+      // Önce market seçeneklerini sil (eğer varsa)
+      if (market.options && market.options.length > 0) {
+        await MarketOption.destroy({
+          where: { market_id: id },
+          transaction
+        });
+      }
+
+      // Marketi sil
+      await market.destroy({ transaction });
+
+      await transaction.commit();
+
+      res.status(200).json({ 
+        success: true,
+        message: 'Market başarıyla silindi'
+      });
+    } catch (error) {
+      await transaction.rollback();
+      console.error('Market silme hatası:', error);
+      res.status(500).json({ 
+        success: false,
+        message: 'Market silinirken bir hata oluştu', 
+        error: error.message 
+      });
+    }
+  }
+
+  // Yeni pazar oluşturma
+  async createMarket(req, res) {
+    const transaction = await db.sequelize.transaction();
+    
+    try {
+      const {
+        title,
+        description,
+        category,
+        closing_date,
+        image_url,
+        market_type,
+        options
+      } = req.body;
+
+      if (!title || !closing_date) {
+        await transaction.rollback();
+        return res.status(400).json({
+          success: false,
+          message: 'Başlık ve kapanış tarihi zorunludur'
+        });
+      }
+
+      const marketTypeValue = market_type || 'binary';
+
+      if (marketTypeValue === 'multiple_choice') {
+        if (!options || !Array.isArray(options) || options.length < 2) {
+          await transaction.rollback();
+          return res.status(400).json({
+            success: false,
+            message: 'Multiple choice market için en az 2 seçenek gereklidir'
+          });
+        }
+      }
+
+      const market = await Market.create({
+        title,
+        description,
+        category,
+        closing_date,
+        image_url,
+        market_type: marketTypeValue,
+        status: 'open'
+      }, { transaction });
+
+      if (marketTypeValue === 'multiple_choice' && options) {
+        for (let i = 0; i < options.length; i++) {
+          const option = options[i];
+          await MarketOption.create({
+            market_id: market.id,
+            option_text: option.option_text,
+            option_image_url: option.option_image_url || null,
+            option_order: option.option_order !== undefined ? option.option_order : i
+          }, { transaction });
+        }
+      }
+
+      await transaction.commit();
+
+      const createdMarket = await Market.findByPk(market.id, {
+        include: [{
+          model: MarketOption,
+          as: 'options',
+          required: false
+        }]
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Market başarıyla oluşturuldu',
+        market: createdMarket
+      });
+
+    } catch (error) {
+      await transaction.rollback();
+      console.error('Market oluşturma hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Market oluşturulamadı',
+        error: error.message
       });
     }
   }
@@ -82,8 +254,6 @@ class AdminController {
   async promoteToAdmin(req, res) {
     try {
       const { id } = req.params;
-      
-      // Kullanıcıyı admin yap
       const updatedUser = await userService.promoteToAdmin(id);
       
       res.status(200).json({ 
@@ -104,13 +274,12 @@ class AdminController {
     }
   }
 
-  // Kullanıcıya para ekleme (admin only)
+  // Kullanıcıya para ekleme
   async addBalanceToUser(req, res) {
     try {
       const { id } = req.params;
       const { amount, description } = req.body;
 
-      // Validasyon
       if (!amount || amount <= 0) {
         return res.status(400).json({ 
           message: 'Geçersiz miktar. Pozitif bir değer giriniz.' 
@@ -132,7 +301,7 @@ class AdminController {
     }
   }
 
-  // Tüm kullanıcıları listeleme (admin only)
+  // Tüm kullanıcıları listeleme
   async getAllUsers(req, res) {
     try {
       const { page = 1, limit = 50, search } = req.query;
@@ -151,7 +320,7 @@ class AdminController {
     }
   }
 
-  // Tüm pazarları listeleme (admin görünümü)
+  // Tüm pazarları listeleme
   async getAllMarkets(req, res) {
     try {
       const { status } = req.query;
@@ -170,13 +339,12 @@ class AdminController {
     }
   }
 
-  // Kullanıcıya hisse ekleme (admin only)
+  // Kullanıcıya hisse ekleme
   async addSharesToUser(req, res) {
     try {
       const { id } = req.params;
       const { marketId, outcome, quantity } = req.body;
 
-      // Validasyon
       if (!marketId || outcome === null || outcome === undefined || !quantity || quantity <= 0) {
         return res.status(400).json({ 
           message: 'Pazar ID, sonuç (true/false) ve pozitif miktar gereklidir.' 
@@ -204,181 +372,5 @@ class AdminController {
     }
   }
 }
-exports.createMarket = async (req, res) => {
-  const transaction = await db.sequelize.transaction();
-  
-  try {
-    const {
-      title,
-      description,
-      category,
-      closing_date,
-      image_url,
-      market_type,      // 'binary' veya 'multiple_choice'
-      options           // multiple_choice için gerekli
-    } = req.body;
 
-    // Validasyon
-    if (!title || !closing_date) {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        message: 'Başlık ve kapanış tarihi zorunludur'
-      });
-    }
-
-    const marketTypeValue = market_type || 'binary';
-
-    if (marketTypeValue === 'multiple_choice') {
-      if (!options || !Array.isArray(options) || options.length < 2) {
-        await transaction.rollback();
-        return res.status(400).json({
-          success: false,
-          message: 'Multiple choice market için en az 2 seçenek gereklidir'
-        });
-      }
-    }
-
-    // Market oluştur
-    const market = await Market.create({
-      title,
-      description,
-      category,
-      closing_date,
-      image_url,
-      market_type: marketTypeValue,
-      status: 'open'
-    }, { transaction });
-
-    // Eğer multiple_choice ise, seçenekleri ekle
-    if (marketTypeValue === 'multiple_choice' && options) {
-      for (let i = 0; i < options.length; i++) {
-        const option = options[i];
-        await MarketOption.create({
-          market_id: market.id,
-          option_text: option.option_text,
-          option_image_url: option.option_image_url || null,
-          option_order: option.option_order !== undefined ? option.option_order : i
-        }, { transaction });
-      }
-    }
-
-    await transaction.commit();
-
-    // Oluşturulan marketi seçenekleriyle birlikte getir
-    const createdMarket = await Market.findByPk(market.id, {
-      include: [{
-        model: MarketOption,
-        as: 'options',
-        required: false
-      }]
-    });
-
-    res.status(201).json({
-      success: true,
-      message: 'Market başarıyla oluşturuldu',
-      market: createdMarket
-    });
-
-  } catch (error) {
-    await transaction.rollback();
-    console.error('Market oluşturma hatası:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Market oluşturulamadı',
-      error: error.message
-    });
-  }
-};
-
-// Market sonuçlandır (binary ve multiple choice için)
-exports.resolveMarket = async (req, res) => {
-  const transaction = await db.sequelize.transaction();
-  
-  try {
-    const { id } = req.params;
-    const { outcome, winning_option_id } = req.body;
-
-    const market = await Market.findByPk(id, {
-      include: [{
-        model: MarketOption,
-        as: 'options'
-      }],
-      transaction
-    });
-    
-    if (!market) {
-      await transaction.rollback();
-      return res.status(404).json({
-        success: false,
-        message: 'Market bulunamadı'
-      });
-    }
-
-    if (market.status === 'resolved') {
-      await transaction.rollback();
-      return res.status(400).json({
-        success: false,
-        message: 'Market zaten sonuçlandırılmış'
-      });
-    }
-
-    if (market.market_type === 'binary') {
-      if (outcome === undefined || outcome === null) {
-        await transaction.rollback();
-        return res.status(400).json({
-          success: false,
-          message: 'Binary market için outcome (true/false) gereklidir'
-        });
-      }
-
-      await market.update({
-        status: 'resolved',
-        outcome: outcome
-      }, { transaction });
-
-    } else if (market.market_type === 'multiple_choice') {
-      if (!winning_option_id) {
-        await transaction.rollback();
-        return res.status(400).json({
-          success: false,
-          message: 'Multiple choice market için kazanan seçenek ID\'si gereklidir'
-        });
-      }
-
-      // Kazanan seçeneğin bu markete ait olduğunu kontrol et
-      const winningOption = market.options.find(opt => opt.id === parseInt(winning_option_id));
-      
-      if (!winningOption) {
-        await transaction.rollback();
-        return res.status(400).json({
-          success: false,
-          message: 'Geçersiz kazanan seçenek ID\'si'
-        });
-      }
-
-      await market.update({
-        status: 'resolved',
-        outcome: winning_option_id // Kazanan option ID'sini outcome'a kaydet
-      }, { transaction });
-    }
-
-    await transaction.commit();
-
-    res.json({
-      success: true,
-      message: 'Market başarıyla sonuçlandırıldı',
-      market
-    });
-
-  } catch (error) {
-    await transaction.rollback();
-    console.error('Market sonuçlandırma hatası:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Market sonuçlandırılamadı',
-      error: error.message
-    });
-  }
-};
 module.exports = new AdminController();
