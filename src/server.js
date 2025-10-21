@@ -29,13 +29,15 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
-// ✅ DÜZELTME: CORS ayarlarını güncelle
+// ✅ CORS ayarları - Admin CMS dahil
 app.use(cors({
   origin: [
     'https://kahinmarket.com',
-    'https://app.kahinmarket.com',  // ← YENİ
+    'https://app.kahinmarket.com',
+    'https://admin.kahinmarket.com',  // ← YENİ ADMIN CMS
     'http://localhost:5173',
     'http://localhost:5174',
+    'http://localhost:5175',  // ← Admin CMS local
     'http://localhost:3000'
   ],
   credentials: true
@@ -92,7 +94,6 @@ app.use(notFoundHandler);
 
 // Error Handler
 app.use(errorHandler);
-
 
 async function startServer() {
   try {
