@@ -48,6 +48,13 @@ router.patch('/users/:id/promote',
   adminController.promoteToAdmin
 );
 
+// Kullanıcının admin yetkisini kaldırma
+router.patch('/users/:id/demote',
+  authMiddleware,
+  adminMiddleware,
+  adminController.demoteFromAdmin
+);
+
 // Kullanıcıya para ekleme
 router.post('/users/:id/add-balance',
   authMiddleware,

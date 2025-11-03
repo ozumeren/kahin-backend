@@ -129,15 +129,6 @@ class AdminController {
         });
       }
 
-      // Sonuçlandırılmış marketler silinemez (isteğe bağlı kısıtlama)
-      if (market.status === 'resolved') {
-        await transaction.rollback();
-        return res.status(400).json({ 
-          success: false,
-          message: 'Sonuçlandırılmış marketler silinemez' 
-        });
-      }
-
       // Önce market seçeneklerini sil (eğer varsa)
       if (market.options && market.options.length > 0) {
         await MarketOption.destroy({
@@ -283,6 +274,45 @@ class AdminController {
       console.error('Kullanıcı yükseltme hatası:', error);
       res.status(400).json({ 
         message: 'Kullanıcı admin yapılırken bir hata oluştu.', 
+        error: error.message 
+      });
+    }
+  }
+
+  // Kullanıcının admin yetkisini kaldırma
+  async demoteFromAdmin(req, res) {
+    try {
+      const { id } = req.params;
+      
+      const user = await User.findByPk(id);
+      
+      if (!user) {
+        return res.status(404).json({ 
+          message: 'Kullanıcı bulunamadı' 
+        });
+      }
+
+      if (user.role !== 'admin') {
+        return res.status(400).json({ 
+          message: 'Kullanıcı zaten admin değil' 
+        });
+      }
+
+      await user.update({ role: 'user' });
+      
+      res.status(200).json({ 
+        message: 'Kullanıcının admin yetkisi kaldırıldı.', 
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role
+        }
+      });
+    } catch (error) {
+      console.error('Admin yetkisi kaldırma hatası:', error);
+      res.status(400).json({ 
+        message: 'Admin yetkisi kaldırılırken bir hata oluştu.', 
         error: error.message 
       });
     }
