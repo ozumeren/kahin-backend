@@ -181,6 +181,16 @@ class AdminController {
         options
       } = req.body;
 
+      console.log('📥 Received market data:', {
+        title,
+        description,
+        category,
+        closing_date,
+        image_url,
+        market_type,
+        options
+      });
+
       if (!title || !closing_date) {
         await transaction.rollback();
         return res.status(400).json({
@@ -201,7 +211,7 @@ class AdminController {
         }
       }
 
-      const market = await Market.create({
+      const marketData = {
         title,
         description,
         category,
@@ -209,7 +219,11 @@ class AdminController {
         image_url,
         market_type: marketTypeValue,
         status: 'open'
-      }, { transaction });
+      };
+
+      console.log('💾 Creating market with data:', marketData);
+
+      const market = await Market.create(marketData, { transaction });
 
       if (marketTypeValue === 'multiple_choice' && options) {
         for (let i = 0; i < options.length; i++) {

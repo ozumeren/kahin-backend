@@ -11,8 +11,11 @@ RUN npm install
 # 4. Copy the rest of your project files
 COPY . .
 
-# 5. Tell Docker which port the app will run on
+# 5. Make the startup script executable
+RUN chmod +x scripts/start-with-migration.sh
+
+# 6. Tell Docker which port the app will run on
 EXPOSE 3000
 
-# 6. The command to start the app
-CMD [ "npm", "run", "start" ]
+# 7. The command to start the app with migrations
+CMD [ "sh", "scripts/start-with-migration.sh" ]

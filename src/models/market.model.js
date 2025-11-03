@@ -17,6 +17,11 @@ const Market = sequelize.define('Market', {
     type: DataTypes.TEXT,
     allowNull: true // Açıklama zorunlu olmayabilir
   },
+  category: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: 'politics' // Default kategori
+  },
   status: {
     type: DataTypes.STRING,
     allowNull: false,
