@@ -34,14 +34,22 @@ app.use(cors({
   origin: [
     'https://kahinmarket.com',
     'https://app.kahinmarket.com',
-    'https://admin.kahinmarket.com',  // ← YENİ ADMIN CMS
+    'https://admin.kahinmarket.com',
     'http://localhost:5173',
     'http://localhost:5174',
-    'http://localhost:5175',  // ← Admin CMS local
+    'http://localhost:5175',
     'http://localhost:3000'
   ],
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'], // OPTIONS ekle
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'X-Request-Id'],
+  maxAge: 86400 // 24 saat preflight cache
 }));
+
+// ✅ Preflight requestler için explicit handler ekle
+app.options('*', cors()); // Tüm route'lar için OPTIONS'a izin ver
+
 app.use(express.json());
 app.use(cookieParser());
 
