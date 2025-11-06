@@ -122,6 +122,11 @@ const errorHandler = (err, req, res, next) => {
 
 // 404 - Route bulunamadı middleware'i
 const notFoundHandler = (req, res, next) => {
+  // ✅ OPTIONS requestleri skip et (CORS middleware halletsin)
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+  
   const error = ApiError.notFound(`Route bulunamadı: ${req.method} ${req.originalUrl}`);
   next(error);
 };
