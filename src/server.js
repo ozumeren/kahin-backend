@@ -1,5 +1,5 @@
 // src/server.js
-console.log('--- SERVER.JS DOSYASI BAŞLADI ---');
+console.log('🚀 SERVER.JS BAŞLATILIYOR...');
 
 const express = require('express');
 const cors = require('cors');
@@ -11,6 +11,7 @@ const websocketServer = require('../config/websocket');
 const { errorHandler, notFoundHandler } = require('./middlewares/error.middleware');
 const migration = require('../migrations/add-multiple-choice-support');
 
+console.log('📦 Route modülleri yükleniyor...');
 // routes import...
 const authRoutes = require('./routes/auth.route');
 const userRoutes = require('./routes/user.route');
@@ -24,6 +25,7 @@ const devRoutes = require('./routes/dev.route');
 const tradeRoutes = require('./routes/trade.route');
 const optionRoutes = require('./routes/option.route');
 const marketService = require('./services/market.service');
+console.log('✅ Route modülleri yüklendi');
 
 const app = express();
 const server = http.createServer(app);
@@ -68,27 +70,27 @@ app.use(cookieParser());
 
 // Logger Middleware
 app.use((req, res, next) => {
-  // req.path kullan (clean path), originalUrl yerine
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - Origin: ${req.headers.origin}`);
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - Origin: ${req.headers.origin || 'none'}`);
   next();
 });
 
-// Health check endpoint ekle
+// Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    env: process.env.NODE_ENV 
+    uptime: process.uptime()
   });
 });
 
 // Ana sayfa
 app.get('/', (req, res) => {
   res.json({
-    message: 'Kahin Market API',
-    version: '1.0.0',
+    message: 'Kahin Market API v1.0.0',
     status: 'running',
+    version: '1.0.0',
     endpoints: {
+      health: '/health',
       auth: '/api/v1/auth',
       users: '/api/v1/users',
       markets: '/api/v1/markets',
@@ -104,22 +106,36 @@ app.get('/', (req, res) => {
   });
 });
 
+console.log('🔌 API Route\'ları mount ediliyor...');
 // API Routes
 app.use('/api/v1/auth', authRoutes);
+console.log('  ✓ /api/v1/auth');
 app.use('/api/v1/users', userRoutes);
+console.log('  ✓ /api/v1/users');
 app.use('/api/v1/markets', marketRoutes);
+console.log('  ✓ /api/v1/markets');
 app.use('/api/v1/shares', shareRoutes);
+console.log('  ✓ /api/v1/shares');
 app.use('/api/v1/orders', orderRoutes);
+console.log('  ✓ /api/v1/orders');
 app.use('/api/v1/transactions', transactionRoutes);
+console.log('  ✓ /api/v1/transactions');
 app.use('/api/v1/portfolio', portfolioRoutes);
+console.log('  ✓ /api/v1/portfolio');
 app.use('/api/v1/trades', tradeRoutes);
+console.log('  ✓ /api/v1/trades');
 app.use('/api/v1/options', optionRoutes);
+console.log('  ✓ /api/v1/options');
 app.use('/api/v1/admin', adminRoutes);
+console.log('  ✓ /api/v1/admin');
 
 // Dev route (sadece production dışında)
 if (process.env.NODE_ENV !== 'production') {
   app.use('/api/v1/dev', devRoutes);
+  console.log('  ✓ /api/v1/dev (development only)');
 }
+
+console.log('✅ Tüm route\'lar mount edildi\n');
 
 // 404 Handler
 app.use(notFoundHandler);
@@ -129,6 +145,8 @@ app.use(errorHandler);
 
 async function startServer() {
   try {
+    console.log('🔄 Bağlantılar kuruluyor...\n');
+    
     if (!redisClient.isOpen) {
       await redisClient.connect();
       console.log('✓ Redis bağlantısı başarıyla kuruldu.');
@@ -164,11 +182,11 @@ async function startServer() {
     await marketService.initializeAllOrderBooks();
 
     server.listen(PORT, () => {
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`✓ HTTP Sunucu ${PORT} portunda başlatıldı.`);
       console.log(`✓ WebSocket: wss://api.kahinmarket.com/ws`);
       console.log(`✓ Ortam: ${process.env.NODE_ENV || 'development'}`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     });
 
   } catch (error) {
@@ -178,7 +196,7 @@ async function startServer() {
 }
 
 process.on('SIGINT', async () => {
-  console.log('Sunucu kapatılıyor...');
+  console.log('\n🛑 Sunucu kapatılıyor...');
   await redisClient.quit();
   await db.sequelize.close();
   process.exit(0);
