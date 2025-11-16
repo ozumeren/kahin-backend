@@ -68,15 +68,26 @@ app.use(cookieParser());
 
 // Logger Middleware
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - Origin: ${req.headers.origin}`);
+  // req.path kullan (clean path), originalUrl yerine
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - Origin: ${req.headers.origin}`);
   next();
+});
+
+// Health check endpoint ekle
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV 
+  });
 });
 
 // Ana sayfa
 app.get('/', (req, res) => {
   res.json({
-    message: 'Kahin Projesi Backend Sunucusu Çalışıyor!',
+    message: 'Kahin Market API',
     version: '1.0.0',
+    status: 'running',
     endpoints: {
       auth: '/api/v1/auth',
       users: '/api/v1/users',
