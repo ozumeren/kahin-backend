@@ -1,46 +1,32 @@
-# Dependencies
-node_modules
-npm-debug.log
-yarn-error.log
-package-lock.json
+# Backend için Production Dockerfile
+FROM node:18-alpine
 
-# Environment files
-.env
-.env.local
-.env.*.local
+# Çalışma dizini
+WORKDIR /app
 
-# Development files
-.git
-.gitignore
-.vscode
-.idea
-*.md
-README.md
+# Sistem bağımlılıkları (gerekirse)
+RUN apk add --no-cache bash
 
-# Testing
-coverage
-*.test.js
-*.spec.js
+# Package files'ı kopyala
+COPY package*.json ./
 
-# CI/CD
-.github
-.gitlab-ci.yml
+# Dependencies yükle
+# npm ci yerine npm install kullanıyoruz (package-lock.json olmayabilir)
+RUN npm install --only=production && \
+    npm cache clean --force
 
-# Logs
-logs
-*.log
+# Uygulama dosyalarını kopyala
+COPY . .
 
-# OS files
-.DS_Store
-Thumbs.db
+# Startup script'i executable yap
+RUN chmod +x scripts/start-with-migration.sh
 
-# Cache directories
-.npm
-.cache
-.eslintcache
-node_modules/.cache
+# Port
+EXPOSE 3000
 
-# Temporary files
-*.tmp
-*.swp
-*~
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# Start
+CMD ["sh", "scripts/start-with-migration.sh"]
