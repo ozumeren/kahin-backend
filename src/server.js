@@ -160,8 +160,6 @@ async function startServer() {
     // Migration'ı çalıştır
     const userProfileMigration = require('../migrations/add-user-profile-fields');
 
-const userProfileMigration = require('../migrations/add-user-profile-fields');
-
 // Migration bölümüne ekleyin
     try {
       console.log('🔄 User Profile Migration kontrol ediliyor...');
