@@ -35,9 +35,21 @@ const User = sequelize.define('User', {
     type: DataTypes.ENUM('user', 'admin'),
     allowNull: false,
     defaultValue: 'user'
+  },
+  avatar_url: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+    defaultValue: null
+  },
+  bio: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    defaultValue: null
   }
 }, {
-  tableName: 'users'
+  tableName: 'users',
+  timestamps: true,
+  underscored: true
 });
 
 module.exports = User;
