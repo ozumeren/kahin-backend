@@ -158,15 +158,18 @@ async function startServer() {
     console.log('✓ Veritabanı bağlantısı başarılı.');
 
     // Migration'ı çalıştır
+    const userProfileMigration = require('../migrations/add-user-profile-fields');
+
+// Migration'ları çalıştırma bölümüne ekleyin:
     try {
-      console.log('🔄 Migration kontrol ediliyor...');
-      await migration.up(db.sequelize.queryInterface, db.Sequelize);
-      console.log('✅ Migration tamamlandı!');
+      console.log('🔄 User Profile Migration kontrol ediliyor...');
+      await userProfileMigration.up(db.sequelize.queryInterface, db.Sequelize);
+      console.log('✅ User Profile Migration tamamlandı!');
     } catch (error) {
       if (error.message?.includes('already exists') || error.message?.includes('duplicate')) {
-        console.log('ℹ️ Migration zaten uygulanmış.');
+        console.log('ℹ️ User Profile Migration zaten uygulanmış.');
       } else {
-        console.error('⚠️ Migration hatası:', error.message);
+        console.error('⚠️ User Profile Migration hatası:', error.message);
       }
     }
 
