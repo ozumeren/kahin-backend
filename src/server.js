@@ -10,6 +10,9 @@ const redisClient = require('../config/redis');
 const websocketServer = require('../config/websocket');
 const { errorHandler, notFoundHandler } = require('./middlewares/error.middleware');
 const migration = require('../migrations/add-multiple-choice-support');
+const multipleChoiceMigration = require('../migrations/add-multiple-choice-support');
+const userProfileMigration = require('../migrations/add-user-profile-fields');
+const timestampMigration = require('../migrations/add-timestamps-to-all-tables'); // ⭐ YENİ
 
 console.log('📦 Route modülleri yükleniyor...');
 // routes import...
@@ -160,6 +163,20 @@ async function startServer() {
     const userProfileMigration = require('../migrations/add-user-profile-fields');
 
     // Mevcut migration bölümüne ekleyin (add-multiple-choice-support'tan sonra)
+    // 1. Multiple Choice Migration
+    try {
+      console.log('🔄 Multiple Choice Migration kontrol ediliyor...');
+      await multipleChoiceMigration.up(db.sequelize.queryInterface, db.Sequelize);
+      console.log('✅ Multiple Choice Migration tamamlandı!');
+    } catch (error) {
+      if (error.message?.includes('already exists')) {
+        console.log('ℹ️ Multiple Choice Migration zaten uygulanmış.');
+      } else {
+        console.error('⚠️ Migration hatası:', error.message);
+      }
+    }
+
+    // 2. User Profile Migration
     try {
       console.log('🔄 User Profile Migration kontrol ediliyor...');
       await userProfileMigration.up(db.sequelize.queryInterface, db.Sequelize);
@@ -168,7 +185,20 @@ async function startServer() {
       if (error.message?.includes('already exists')) {
         console.log('ℹ️ User Profile Migration zaten uygulanmış.');
       } else {
-        console.error('⚠️ User Profile Migration hatası:', error.message);
+        console.error('⚠️ Migration hatası:', error.message);
+      }
+    }
+
+    // 3. Timestamp Migration ⭐ YENİ
+    try {
+      console.log('🔄 Timestamp Migration kontrol ediliyor...');
+      await timestampMigration.up(db.sequelize.queryInterface, db.Sequelize);
+      console.log('✅ Timestamp Migration tamamlandı!');
+    } catch (error) {
+      if (error.message?.includes('already exists')) {
+        console.log('ℹ️ Timestamp Migration zaten uygulanmış.');
+      } else {
+        console.error('⚠️ Migration hatası:', error.message);
       }
     }
 
