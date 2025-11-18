@@ -157,10 +157,9 @@ async function startServer() {
     await db.sequelize.authenticate();
     console.log('✓ Veritabanı bağlantısı başarılı.');
 
-    // Migration'ı çalıştır
     const userProfileMigration = require('../migrations/add-user-profile-fields');
 
-// Migration bölümüne ekleyin
+    // Mevcut migration bölümüne ekleyin (add-multiple-choice-support'tan sonra)
     try {
       console.log('🔄 User Profile Migration kontrol ediliyor...');
       await userProfileMigration.up(db.sequelize.queryInterface, db.Sequelize);
@@ -171,11 +170,6 @@ async function startServer() {
       } else {
         console.error('⚠️ User Profile Migration hatası:', error.message);
       }
-    }
-
-    if (process.env.NODE_ENV !== 'production') {
-      await db.sequelize.sync({ alter: false });
-      console.log('✓ Veritabanı modelleri senkronize edildi.');
     }
 
     await websocketServer.initialize(server);

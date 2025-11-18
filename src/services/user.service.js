@@ -190,9 +190,9 @@ class UserService {
     let dateFilter = '';
     
     if (timeframe === 'week') {
-      dateFilter = `AND t."created_at" >= NOW() - INTERVAL '7 days'`;
+      dateFilter = `AND t."createdAt" >= NOW() - INTERVAL '7 days'`;
     } else if (timeframe === 'month') {
-      dateFilter = `AND t."created_at" >= NOW() - INTERVAL '30 days'`;
+      dateFilter = `AND t."createdAt" >= NOW() - INTERVAL '30 days'`;
     }
 
     const leaderboard = await sequelize.query(`
