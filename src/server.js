@@ -160,13 +160,15 @@ async function startServer() {
     // Migration'ı çalıştır
     const userProfileMigration = require('../migrations/add-user-profile-fields');
 
-// Migration'ları çalıştırma bölümüne ekleyin:
+const userProfileMigration = require('../migrations/add-user-profile-fields');
+
+// Migration bölümüne ekleyin
     try {
       console.log('🔄 User Profile Migration kontrol ediliyor...');
       await userProfileMigration.up(db.sequelize.queryInterface, db.Sequelize);
       console.log('✅ User Profile Migration tamamlandı!');
     } catch (error) {
-      if (error.message?.includes('already exists') || error.message?.includes('duplicate')) {
+      if (error.message?.includes('already exists')) {
         console.log('ℹ️ User Profile Migration zaten uygulanmış.');
       } else {
         console.error('⚠️ User Profile Migration hatası:', error.message);

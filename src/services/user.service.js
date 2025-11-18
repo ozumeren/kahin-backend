@@ -84,8 +84,7 @@ class UserService {
         'id',
         'username',
         'avatar_url',
-        'bio',
-        'created_at'
+        'bio'
       ]
     });
 
@@ -98,6 +97,7 @@ class UserService {
 
     return {
       ...user.toJSON(),
+      created_at: user.createdAt || user.created_at,
       stats
     };
   }
@@ -181,7 +181,7 @@ class UserService {
       win_rate: parseFloat(winRatePercentage),
       markets_won: wins,
       markets_resolved: totalResolved,
-      member_since: user.created_at
+      member_since: user.createdAt || user.created_at
     };
   }
 
