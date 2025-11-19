@@ -27,6 +27,7 @@ const adminRoutes = require('./routes/admin.route');
 const devRoutes = require('./routes/dev.route');
 const tradeRoutes = require('./routes/trade.route');
 const optionRoutes = require('./routes/option.route');
+const walletRoutes = require('./routes/wallet.route');
 const marketService = require('./services/market.service');
 console.log('✅ Route modülleri yüklendi');
 
@@ -103,6 +104,7 @@ app.get('/', (req, res) => {
       portfolio: '/api/v1/portfolio',
       trades: '/api/v1/trades',
       options: '/api/v1/options',
+      wallet: '/api/v1/wallet',
       admin: '/api/v1/admin',
       websocket: 'wss://api.kahinmarket.com/ws'
     }
@@ -129,6 +131,8 @@ app.use('/api/v1/trades', tradeRoutes);
 console.log('  ✓ /api/v1/trades');
 app.use('/api/v1/options', optionRoutes);
 console.log('  ✓ /api/v1/options');
+app.use('/api/v1/wallet', walletRoutes);
+console.log('  ✓ /api/v1/wallet');
 app.use('/api/v1/admin', adminRoutes);
 console.log('  ✓ /api/v1/admin');
 
