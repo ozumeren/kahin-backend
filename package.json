@@ -5,6 +5,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
+    "clob": "node src/clob-engine/index.js",
+    "clob:demo": "node src/clob-engine/test/demo.js",
     "migrate": "node scripts/run-migration.js",
     "migrate:down": "node scripts/run-migration.js down"
   },
