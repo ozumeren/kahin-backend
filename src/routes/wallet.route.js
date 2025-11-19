@@ -6,17 +6,23 @@ const authMiddleware = require('../middlewares/auth.middleware');
 
 // ========== PROTECTED ROUTES (Auth Gerekli) ==========
 
-// GET /api/v1/wallet/balance - Bakiye sorgulama
+// GET /api/v1/wallet/balance - Bakiye sorgulama (with stats)
 router.get('/balance', authMiddleware, walletController.getBalance);
+
+// GET /api/v1/wallet/limits - Günlük limitleri göster
+router.get('/limits', authMiddleware, walletController.getLimits);
+
+// GET /api/v1/wallet/locked-funds - Kilitli bakiyeyi göster
+router.get('/locked-funds', authMiddleware, walletController.getLockedFunds);
+
+// GET /api/v1/wallet/history - Wallet işlem geçmişi
+// Query params: ?type=deposit,withdrawal&startDate=&endDate=&limit=20&offset=0&marketId=
+router.get('/history', authMiddleware, walletController.getHistory);
 
 // POST /api/v1/wallet/deposit - Para yatırma (test/demo)
 router.post('/deposit', authMiddleware, walletController.deposit);
 
 // POST /api/v1/wallet/withdraw - Para çekme
 router.post('/withdraw', authMiddleware, walletController.withdraw);
-
-// GET /api/v1/wallet/history - Wallet işlem geçmişi
-// Query params: ?type=deposit|withdrawal&startDate=&endDate=&limit=50&offset=0
-router.get('/history', authMiddleware, walletController.getHistory);
 
 module.exports = router;
