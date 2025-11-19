@@ -1,0 +1,25 @@
+[package]
+name = "matching_engine"
+version = "0.1.0"
+edition = "2021"
+authors = ["Kahin Market"]
+description = "High-performance CLOB matching engine for prediction markets"
+license = "MIT"
+readme = "README.md"
+
+[lib]
+name = "matching_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "matching_engine_demo"
+path = "src/main.rs"
+
+[dependencies]
+
+[dev-dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
