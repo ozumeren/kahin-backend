@@ -71,12 +71,12 @@ const Market = sequelize.define('Market', {
     // Featured markets için
     {
       name: 'idx_markets_featured',
-      fields: ['featured', 'featured_weight', 'created_at']
+      fields: ['featured', 'featured_weight', 'createdAt']
     },
     // Category filtering için
     {
       name: 'idx_markets_category_status',
-      fields: ['category', 'status', 'created_at']
+      fields: ['category', 'status', 'createdAt']
     },
     // Closing date filtering için
     {
