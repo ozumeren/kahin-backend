@@ -1,5 +1,8 @@
 // src/controllers/market.controller.js
 const marketService = require('../services/market.service');
+const marketDiscoveryService = require('../services/market-discovery.service');
+const marketSearchService = require('../services/market-search.service');
+const similarityService = require('../services/similarity.service');
 const db = require('../models');
 const { Trade, MarketOption } = db;
 
@@ -187,6 +190,168 @@ async getMarketById(req, res, next) {
       res.status(200).json({
         success: true,
         data: orderBook
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Featured marketleri getir
+  async getFeaturedMarkets(req, res, next) {
+    try {
+      const { limit = 10, category } = req.query;
+
+      const markets = await marketDiscoveryService.getFeaturedMarkets({
+        limit: parseInt(limit),
+        category
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          markets,
+          count: markets.length
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Trending marketleri getir
+  async getTrendingMarkets(req, res, next) {
+    try {
+      const { timeframe = '24h', limit = 20, category } = req.query;
+
+      const markets = await marketDiscoveryService.getTrendingMarkets({
+        timeframe,
+        limit: parseInt(limit),
+        category
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          markets,
+          count: markets.length,
+          timeframe
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Kategoriye göre marketleri getir
+  async getMarketsByCategory(req, res, next) {
+    try {
+      const { category } = req.params;
+      const {
+        status,
+        sortBy = 'volume',
+        sortOrder = 'desc',
+        limit = 20,
+        offset = 0,
+        minVolume,
+        maxPrice
+      } = req.query;
+
+      const result = await marketDiscoveryService.getMarketsByCategory(category, {
+        status,
+        sortBy,
+        sortOrder,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        minVolume,
+        maxPrice
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          category,
+          ...result
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Market arama
+  async searchMarkets(req, res, next) {
+    try {
+      const {
+        q,
+        category,
+        status,
+        minVolume,
+        maxVolume,
+        minPrice,
+        maxPrice,
+        closingBefore,
+        closingAfter,
+        hasImage,
+        sortBy = 'relevance',
+        limit = 20,
+        offset = 0
+      } = req.query;
+
+      const result = await marketSearchService.searchMarkets({
+        q,
+        category,
+        status,
+        minVolume,
+        maxVolume,
+        minPrice,
+        maxPrice,
+        closingBefore,
+        closingAfter,
+        hasImage,
+        sortBy,
+        limit: parseInt(limit),
+        offset: parseInt(offset)
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Benzer marketleri getir
+  async getSimilarMarkets(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { limit = 5, algorithm = 'hybrid' } = req.query;
+
+      const result = await similarityService.getSimilarMarkets(id, {
+        limit: parseInt(limit),
+        algorithm
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Tüm kategorileri listele
+  async getCategories(req, res, next) {
+    try {
+      const categories = await marketDiscoveryService.getCategories();
+
+      res.status(200).json({
+        success: true,
+        data: {
+          categories
+        }
       });
     } catch (error) {
       next(error);
