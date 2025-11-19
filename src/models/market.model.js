@@ -38,9 +38,57 @@ const Market = sequelize.define('Market', {
   image_url: {
     type: DataTypes.STRING,
     allowNull: true // Görsel opsiyonel
+  },
+  // Discovery & Filtering fields
+  featured: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  featured_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  featured_weight: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0 // Yüksek = öncelikli
+  },
+  view_count: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0
+  },
+  tags: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    defaultValue: []
+  },
+  seo_slug: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    unique: true
   }
 }, {
-  tableName: 'markets'
+  tableName: 'markets',
+  indexes: [
+    // Featured markets için
+    {
+      name: 'idx_markets_featured',
+      fields: ['featured', 'featured_weight', 'created_at']
+    },
+    // Category filtering için
+    {
+      name: 'idx_markets_category_status',
+      fields: ['category', 'status', 'created_at']
+    },
+    // Closing date filtering için
+    {
+      name: 'idx_markets_closing_date',
+      fields: ['closing_date']
+    },
+    // View count için
+    {
+      name: 'idx_markets_view_count',
+      fields: ['view_count']
+    }
+  ]
 });
 
 module.exports = Market;
