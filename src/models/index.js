@@ -10,6 +10,9 @@ const Trade = require('./trade.model'); // ✅ Import ekle
 const MarketOption = require('./marketOption.model');
 const OptionPosition = require('./optionPosition.model');
 const OptionTrade = require('./optionTrade.model');
+const MarketContract = require('./marketContract.model');
+const ContractResolutionEvidence = require('./contractResolutionEvidence.model');
+const ContractAmendment = require('./contractAmendment.model');
 
 // User <-> Share
 User.hasMany(Share, { foreignKey: 'userId' });
@@ -100,9 +103,99 @@ MarketOption.hasMany(OptionTrade, {
   as: 'trades', 
   foreignKey: 'option_id' 
 });
-OptionTrade.belongsTo(MarketOption, { 
-  as: 'option', 
-  foreignKey: 'option_id' 
+OptionTrade.belongsTo(MarketOption, {
+  as: 'option',
+  foreignKey: 'option_id'
+});
+
+// ===== Contract İlişkileri =====
+
+// Market <-> MarketContract
+Market.hasOne(MarketContract, {
+  as: 'contract',
+  foreignKey: 'market_id'
+});
+MarketContract.belongsTo(Market, {
+  as: 'market',
+  foreignKey: 'market_id'
+});
+
+// User <-> MarketContract (creator, reviewer, approver)
+User.hasMany(MarketContract, {
+  as: 'createdContracts',
+  foreignKey: 'created_by'
+});
+MarketContract.belongsTo(User, {
+  as: 'creator',
+  foreignKey: 'created_by'
+});
+
+User.hasMany(MarketContract, {
+  as: 'reviewedContracts',
+  foreignKey: 'reviewed_by'
+});
+MarketContract.belongsTo(User, {
+  as: 'reviewer',
+  foreignKey: 'reviewed_by'
+});
+
+User.hasMany(MarketContract, {
+  as: 'approvedContracts',
+  foreignKey: 'approved_by'
+});
+MarketContract.belongsTo(User, {
+  as: 'approver',
+  foreignKey: 'approved_by'
+});
+
+// MarketContract <-> ContractResolutionEvidence
+MarketContract.hasMany(ContractResolutionEvidence, {
+  as: 'evidence',
+  foreignKey: 'contract_id'
+});
+ContractResolutionEvidence.belongsTo(MarketContract, {
+  as: 'contract',
+  foreignKey: 'contract_id'
+});
+
+// User <-> ContractResolutionEvidence
+User.hasMany(ContractResolutionEvidence, {
+  as: 'collectedEvidence',
+  foreignKey: 'collected_by'
+});
+ContractResolutionEvidence.belongsTo(User, {
+  as: 'collector',
+  foreignKey: 'collected_by'
+});
+
+// MarketContract <-> ContractAmendment
+MarketContract.hasMany(ContractAmendment, {
+  as: 'amendments',
+  foreignKey: 'contract_id'
+});
+ContractAmendment.belongsTo(MarketContract, {
+  as: 'contract',
+  foreignKey: 'contract_id'
+});
+
+// User <-> ContractAmendment
+User.hasMany(ContractAmendment, {
+  as: 'createdAmendments',
+  foreignKey: 'created_by'
+});
+ContractAmendment.belongsTo(User, {
+  as: 'creator',
+  foreignKey: 'created_by'
+});
+
+// Parent-Child Contract Relationship (for amendments)
+MarketContract.hasMany(MarketContract, {
+  as: 'childContracts',
+  foreignKey: 'parent_contract_id'
+});
+MarketContract.belongsTo(MarketContract, {
+  as: 'parentContract',
+  foreignKey: 'parent_contract_id'
 });
 
 const db = {
@@ -117,7 +210,10 @@ const db = {
   // YENİ modeller
   MarketOption,
   OptionPosition,
-  OptionTrade
+  OptionTrade,
+  MarketContract,
+  ContractResolutionEvidence,
+  ContractAmendment
 };
 
 

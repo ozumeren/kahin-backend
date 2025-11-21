@@ -8,7 +8,10 @@
     "clob": "node src/clob-engine/index.js",
     "clob:demo": "node src/clob-engine/test/demo.js",
     "migrate": "node scripts/run-migration.js",
-    "migrate:down": "node scripts/run-migration.js down"
+    "migrate:down": "node scripts/run-migration.js down",
+    "test": "jest --verbose --coverage",
+    "test:watch": "jest --watch",
+    "test:orders": "jest tests/orders.test.js --verbose"
   },
   "dependencies": {
     "@visx/axis": "^3.12.0",
@@ -34,5 +37,10 @@
     "redis": "^5.8.3",
     "sequelize": "^6.37.3",
     "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.2.0",
+    "supertest": "^7.1.4"
   }
 }

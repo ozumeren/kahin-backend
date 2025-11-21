@@ -769,6 +769,237 @@ class OrderService {
 
     return orders;
   }
+
+  async getOrderById(orderId, userId) {
+    const order = await Order.findOne({
+      where: { id: orderId, userId },
+      include: [
+        {
+          model: Market,
+          attributes: ['id', 'title', 'status', 'closing_date', 'market_type']
+        },
+        {
+          model: Trade,
+          as: 'buyTrades',
+          attributes: ['id', 'quantity', 'price', 'total', 'createdAt'],
+          required: false
+        }
+      ]
+    });
+
+    if (!order) {
+      throw ApiError.notFound('Emir bulunamadı.');
+    }
+
+    // Hesapla: kaç adet dolduruldu
+    const trades = order.buyTrades || [];
+    const filledQuantity = trades.reduce((sum, trade) => sum + trade.quantity, 0);
+
+    return {
+      ...order.toJSON(),
+      filled_quantity: filledQuantity,
+      remaining_quantity: order.quantity - filledQuantity
+    };
+  }
+
+  async amendOrder(orderId, userId, updates) {
+    const { price, quantity } = updates;
+
+    // Validasyon
+    if (!price && !quantity) {
+      throw ApiError.badRequest('Fiyat veya miktar güncellenmeli.');
+    }
+
+    const t = await sequelize.transaction();
+
+    try {
+      // Emri bul
+      const order = await Order.findOne({
+        where: { id: orderId, userId, status: 'OPEN' },
+        transaction: t
+      });
+
+      if (!order) {
+        throw ApiError.notFound('Emir bulunamadı veya güncellenebilir durumda değil.');
+      }
+
+      const market = await Market.findByPk(order.marketId, { transaction: t });
+      if (!market) throw ApiError.notFound('Pazar bulunamadı.');
+
+      // Redis'ten kaldır
+      const outcomeString = order.outcome ? 'yes' : 'no';
+      const orderType = order.type === 'BUY' ? 'bids' : 'asks';
+      const redisKey = `market:${order.marketId}:${outcomeString}:${orderType}`;
+
+      const allOrders = await redisClient.zRangeWithScores(redisKey, 0, -1);
+      for (const redisOrder of allOrders) {
+        if (redisOrder.value.startsWith(`${orderId}:`)) {
+          await redisClient.zRem(redisKey, redisOrder.value);
+          break;
+        }
+      }
+
+      const oldPrice = parseFloat(order.price);
+      const oldQuantity = order.quantity;
+
+      // Fiyat güncelleme
+      if (price !== undefined) {
+        if (price < 0.01 || price > 0.99) {
+          throw ApiError.badRequest('Fiyat 0.01 TL ile 0.99 TL arasında olmalıdır.');
+        }
+        order.price = price;
+      }
+
+      // Miktar güncelleme
+      if (quantity !== undefined) {
+        if (quantity < 1) {
+          throw ApiError.badRequest('Miktar en az 1 olmalıdır.');
+        }
+
+        const quantityDiff = quantity - oldQuantity;
+        const user = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
+
+        if (order.type === 'BUY') {
+          // BUY emri: bakiye kontrolü
+          if (quantityDiff > 0) {
+            const additionalCost = quantityDiff * parseFloat(order.price);
+            if (parseFloat(user.balance) < additionalCost) {
+              throw ApiError.badRequest('Yetersiz bakiye.');
+            }
+            user.balance = parseFloat(user.balance) - additionalCost;
+          } else if (quantityDiff < 0) {
+            const refund = Math.abs(quantityDiff) * parseFloat(order.price);
+            user.balance = parseFloat(user.balance) + refund;
+          }
+        } else if (order.type === 'SELL') {
+          // SELL emri: hisse kontrolü
+          const share = await Share.findOne({
+            where: { userId, marketId: order.marketId, outcome: order.outcome },
+            transaction: t
+          });
+
+          if (!share) {
+            throw ApiError.badRequest('Yeterli hisse bulunamadı.');
+          }
+
+          if (quantityDiff > 0) {
+            if (share.quantity < quantityDiff) {
+              throw ApiError.badRequest('Yetersiz hisse.');
+            }
+            share.quantity -= quantityDiff;
+          } else if (quantityDiff < 0) {
+            share.quantity += Math.abs(quantityDiff);
+          }
+
+          await share.save({ transaction: t });
+        }
+
+        await user.save({ transaction: t });
+        order.quantity = quantity;
+      }
+
+      await order.save({ transaction: t });
+
+      // Redis'e geri ekle
+      const newPrice = parseFloat(order.price);
+      const newQuantity = order.quantity;
+      await redisClient.zAdd(redisKey, {
+        score: newPrice,
+        value: `${orderId}:${newQuantity}:${userId}`
+      });
+
+      // Order book güncelleme bildirimi
+      try {
+        await websocketServer.publishOrderBookUpdate(order.marketId);
+      } catch (error) {
+        console.error('WebSocket order book update hatası:', error.message);
+      }
+
+      await t.commit();
+
+      return {
+        id: order.id,
+        marketId: order.marketId,
+        type: order.type,
+        outcome: order.outcome,
+        quantity: order.quantity,
+        price: order.price,
+        status: order.status,
+        updated_at: new Date()
+      };
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  }
+
+  async createBatchOrders(userId, orders) {
+    if (!Array.isArray(orders) || orders.length === 0) {
+      throw ApiError.badRequest('En az bir emir belirtilmelidir.');
+    }
+
+    if (orders.length > 15) {
+      throw ApiError.badRequest('Bir seferde en fazla 15 emir oluşturulabilir.');
+    }
+
+    const results = {
+      success: [],
+      failed: []
+    };
+
+    for (const orderData of orders) {
+      try {
+        const newOrder = await this.createOrder({
+          ...orderData,
+          userId
+        });
+
+        results.success.push({
+          orderId: newOrder.order.id,
+          marketId: orderData.marketId,
+          status: 'OPEN'
+        });
+      } catch (error) {
+        results.failed.push({
+          marketId: orderData.marketId,
+          type: orderData.type,
+          error: error.message,
+          code: error.statusCode === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR'
+        });
+      }
+    }
+
+    return results;
+  }
+
+  async cancelBatchOrders(userId, orderIds) {
+    if (!Array.isArray(orderIds) || orderIds.length === 0) {
+      throw ApiError.badRequest('En az bir emir ID\'si belirtilmelidir.');
+    }
+
+    if (orderIds.length > 50) {
+      throw ApiError.badRequest('Bir seferde en fazla 50 emir iptal edilebilir.');
+    }
+
+    const results = {
+      cancelled: [],
+      failed: []
+    };
+
+    for (const orderId of orderIds) {
+      try {
+        await this.cancelOrder(orderId, userId);
+        results.cancelled.push(orderId);
+      } catch (error) {
+        results.failed.push({
+          order_id: orderId,
+          error: error.message
+        });
+      }
+    }
+
+    return results;
+  }
 }
 
 module.exports = new OrderService();

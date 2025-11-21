@@ -28,6 +28,7 @@ const devRoutes = require('./routes/dev.route');
 const tradeRoutes = require('./routes/trade.route');
 const optionRoutes = require('./routes/option.route');
 const walletRoutes = require('./routes/wallet.route');
+const contractRoutes = require('./routes/contract.route');
 const marketService = require('./services/market.service');
 console.log('✅ Route modülleri yüklendi');
 
@@ -106,6 +107,7 @@ app.get('/', (req, res) => {
       options: '/api/v1/options',
       wallet: '/api/v1/wallet',
       admin: '/api/v1/admin',
+      contracts: '/api/v1/contracts',
       websocket: 'wss://api.kahinmarket.com/ws'
     }
   });
@@ -135,6 +137,8 @@ app.use('/api/v1/wallet', walletRoutes);
 console.log('  ✓ /api/v1/wallet');
 app.use('/api/v1/admin', adminRoutes);
 console.log('  ✓ /api/v1/admin');
+app.use('/api/v1/contracts', contractRoutes);
+console.log('  ✓ /api/v1/contracts');
 
 // Dev route (sadece production dışında)
 if (process.env.NODE_ENV !== 'production') {

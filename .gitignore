@@ -21,3 +21,13 @@ Thumbs.db
 
 # CLOB Engine data
 data/
+
+# Test coverage
+coverage/
+
+# Implementation notes
+*_IMPLEMENTATION*.md
+*_GUIDE.md
+*_RECOMMENDATIONS.md
+*_ENDPOINTS.md
+TEST_RESULTS.md
