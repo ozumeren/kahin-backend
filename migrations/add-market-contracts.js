@@ -5,13 +5,14 @@ module.exports = {
   up: async (queryInterface, Sequelize) => {
     console.log('🚀 Starting market contracts migration...');
 
-    // Check if tables already exist
-    const tables = await queryInterface.showAllTables();
-    const tableNames = tables.map(t => typeof t === 'string' ? t : t.tableName || t.name);
-
-    if (tableNames.includes('market_contracts')) {
-      console.log('ℹ️  market_contracts table already exists, skipping...');
+    // Check if market_contracts table already exists
+    try {
+      await queryInterface.describeTable('market_contracts');
+      console.log('ℹ️  market_contracts table already exists, skipping migration...');
       return;
+    } catch (error) {
+      // Table doesn't exist, continue with migration
+      console.log('✅ market_contracts table does not exist, proceeding with creation...');
     }
 
     // 1. Create market_contracts table
