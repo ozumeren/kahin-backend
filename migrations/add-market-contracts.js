@@ -1,8 +1,10 @@
 // migrations/add-market-contracts.js
-const { DataTypes } = require('sequelize');
+const { Sequelize, DataTypes } = require('sequelize');
 
 module.exports = {
-  up: async (queryInterface, Sequelize) => {
+  async up(sequelize) {
+    const queryInterface = sequelize.getQueryInterface();
+
     console.log('🚀 Starting market contracts migration...');
 
     // Check if market_contracts table already exists
@@ -371,7 +373,8 @@ module.exports = {
     console.log('✅ Market contracts migration completed successfully!');
   },
 
-  down: async (queryInterface, Sequelize) => {
+  async down(sequelize) {
+    const queryInterface = sequelize.getQueryInterface();
     console.log('🔄 Rolling back market contracts migration...');
 
     await queryInterface.dropTable('contract_amendments');
