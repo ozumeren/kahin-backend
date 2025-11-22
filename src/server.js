@@ -15,6 +15,7 @@ const userProfileMigration = require('../migrations/add-user-profile-fields');
 const timestampMigration = require('../migrations/add-timestamps-to-all-tables'); // ⭐ YENİ
 const advancedOrdersMigration = require('../migrations/add-advanced-order-types');
 const priceHistoryMigration = require('../migrations/add-price-history');
+const featuredColumnsMigration = require('../migrations/add-featured-columns');
 
 console.log('📦 Route modülleri yükleniyor...');
 // routes import...
@@ -234,6 +235,19 @@ async function startServer() {
     } catch (error) {
       if (error.message?.includes('already exists')) {
         console.log('ℹ️ Price History Migration zaten uygulanmış.');
+      } else {
+        console.error('⚠️ Migration hatası:', error.message);
+      }
+    }
+
+    // 6. Featured Columns Migration
+    try {
+      console.log('🔄 Featured Columns Migration kontrol ediliyor...');
+      await featuredColumnsMigration.up(db.sequelize);
+      console.log('✅ Featured Columns Migration tamamlandı!');
+    } catch (error) {
+      if (error.message?.includes('already exists')) {
+        console.log('ℹ️ Featured Columns Migration zaten uygulanmış.');
       } else {
         console.error('⚠️ Migration hatası:', error.message);
       }
