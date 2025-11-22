@@ -16,6 +16,7 @@ const timestampMigration = require('../migrations/add-timestamps-to-all-tables')
 const advancedOrdersMigration = require('../migrations/add-advanced-order-types');
 const priceHistoryMigration = require('../migrations/add-price-history');
 const featuredColumnsMigration = require('../migrations/add-featured-columns');
+const fixTimestampDefaultsMigration = require('../migrations/fix-timestamp-defaults');
 
 console.log('📦 Route modülleri yükleniyor...');
 // routes import...
@@ -251,6 +252,15 @@ async function startServer() {
       } else {
         console.error('⚠️ Migration hatası:', error.message);
       }
+    }
+
+    // 7. Fix Timestamp Defaults Migration
+    try {
+      console.log('🔄 Timestamp Defaults Migration kontrol ediliyor...');
+      await fixTimestampDefaultsMigration.up(db.sequelize.getQueryInterface(), db.Sequelize);
+      console.log('✅ Timestamp Defaults Migration tamamlandı!');
+    } catch (error) {
+      console.error('⚠️ Migration hatası:', error.message);
     }
 
     await websocketServer.initialize(server);
