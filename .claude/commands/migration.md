@@ -1,13 +1,11 @@
+---
+description: Güvenli ve idempotent database migration oluşturur
+allowed-tools: Read, Write, Edit, Glob, Grep
+---
+
 # Database Migration Agent
 
 Güvenli ve idempotent database migration oluşturur.
-
-## Kullanım
-```
-/migration users tablosuna phone_number kolonu ekle
-/migration notifications tablosu oluştur
-/migration orders tablosundaki status kolonunu enum yap
-```
 
 ## Argümanlar
 $ARGUMENTS

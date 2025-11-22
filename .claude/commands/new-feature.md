@@ -1,12 +1,11 @@
+---
+description: Yeni feature için model, service, controller, route ve migration oluşturur
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash
+---
+
 # New Feature Scaffold Agent
 
 Yeni bir özellik için tüm gerekli dosyaları oluşturur.
-
-## Kullanım
-```
-/new-feature comment sistemi - marketlere yorum yapma
-/new-feature follow - kullanıcı takip sistemi
-```
 
 ## Argümanlar
 $ARGUMENTS

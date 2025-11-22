@@ -1,13 +1,11 @@
+---
+description: Deployment öncesi kontrolleri yapar ve sorunları tespit eder
+allowed-tools: Read, Bash, Glob, Grep
+---
+
 # Deploy Check Agent
 
 Deployment öncesi kontrolleri yapar ve sorunları tespit eder.
-
-## Kullanım
-```
-/deploy-check           # Tüm kontrolleri yap
-/deploy-check --fix     # Sorunları otomatik düzelt
-/deploy-check --push    # Kontrol + commit + push
-```
 
 ## Argümanlar
 $ARGUMENTS
@@ -20,9 +18,6 @@ Kahin Backend deployment öncesi kontrol listesi:
 ```bash
 # Syntax hataları
 node --check src/server.js
-
-# Circular dependency kontrolü
-# Import hatalarını tespit et
 ```
 
 ### 2. Migration Kontrolleri
@@ -36,23 +31,16 @@ node --check src/server.js
 - Route server.js'e mount edilmiş mi?
 - Controller method'ları tanımlı mı?
 
-### 4. Environment Kontrolleri
-- .env dosyası kontrol et
-- Gerekli environment variable'lar
-- Production secrets kontrolü
-
-### 5. Git Status
+### 4. Git Status
 ```bash
 git status
 git diff --stat
 ```
 
-### 6. API Test
+### 5. API Test
 ```bash
 # Health check
 curl https://api.kahinmarket.com/health
-
-# Kritik endpoint'leri test et
 ```
 
 ### Checklist Çıktısı
@@ -63,10 +51,6 @@ curl https://api.kahinmarket.com/health
 ✅ Routes mounted
 ⚠️  Warning: 2 uncommitted files
 ❌ Error: Missing migration in server.js
-
-Öneriler:
-1. server.js satır 23'e migration ekle
-2. Uncommitted dosyaları commit et
 ```
 
 ### --push Flag

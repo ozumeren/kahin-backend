@@ -1,13 +1,11 @@
+---
+description: API endpoint'lerini analiz edip dokümantasyon oluşturur
+allowed-tools: Read, Write, Edit, Glob, Grep
+---
+
 # API Documentation Agent
 
 API endpoint'lerini analiz edip dokümantasyon oluşturur/günceller.
-
-## Kullanım
-```
-/api-doc              # Tüm endpoint'leri dokümante et
-/api-doc auth         # Sadece auth endpoint'lerini
-/api-doc --update     # API_DOCUMENTATION.md güncelle
-```
 
 ## Argümanlar
 $ARGUMENTS
