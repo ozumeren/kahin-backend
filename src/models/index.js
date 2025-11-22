@@ -13,6 +13,7 @@ const OptionTrade = require('./optionTrade.model');
 const MarketContract = require('./marketContract.model');
 const ContractResolutionEvidence = require('./contractResolutionEvidence.model');
 const ContractAmendment = require('./contractAmendment.model');
+const PriceHistory = require('./priceHistory.model');
 
 // User <-> Share
 User.hasMany(Share, { foreignKey: 'userId' });
@@ -198,6 +199,16 @@ MarketContract.belongsTo(MarketContract, {
   foreignKey: 'parent_contract_id'
 });
 
+// ===== PriceHistory İlişkileri =====
+Market.hasMany(PriceHistory, {
+  as: 'priceHistory',
+  foreignKey: 'market_id'
+});
+PriceHistory.belongsTo(Market, {
+  as: 'market',
+  foreignKey: 'market_id'
+});
+
 const db = {
   sequelize,
   Sequelize,
@@ -213,7 +224,8 @@ const db = {
   OptionTrade,
   MarketContract,
   ContractResolutionEvidence,
-  ContractAmendment
+  ContractAmendment,
+  PriceHistory
 };
 
 

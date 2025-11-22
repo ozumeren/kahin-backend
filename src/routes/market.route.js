@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const marketController = require('../controllers/market.controller');
+const priceHistoryController = require('../controllers/priceHistory.controller');
 const {
   cacheFeatured,
   cacheTrending,
@@ -41,6 +42,23 @@ router.get('/:id/orderbook', marketController.getOrderBook);
 
 // GET /api/v1/markets/:id/similar -> Benzer marketleri getirir
 router.get('/:id/similar', cacheSimilar, marketController.getSimilarMarkets);
+
+// ========== PRICE HISTORY ENDPOINTS ==========
+// GET /api/v1/markets/:id/candles -> OHLCV candlestick data
+// Query: ?outcome=true&interval=1h&startTime=...&endTime=...&limit=100
+router.get('/:id/candles', priceHistoryController.getCandles);
+
+// GET /api/v1/markets/:id/candles/latest -> Latest candle
+// Query: ?outcome=true&interval=1h
+router.get('/:id/candles/latest', priceHistoryController.getLatestCandle);
+
+// GET /api/v1/markets/:id/stats/24h -> 24-hour statistics
+// Query: ?outcome=true
+router.get('/:id/stats/24h', priceHistoryController.get24hStats);
+
+// GET /api/v1/markets/:id/price -> Current price from cache
+// Query: ?outcome=true
+router.get('/:id/price', priceHistoryController.getCurrentPrice);
 
 // NOT: Pazar oluşturma artık admin route'unda
 // POST /api/v1/admin/markets

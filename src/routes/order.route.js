@@ -5,11 +5,17 @@ const orderController = require('../controllers/order.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 
 // POST /api/v1/orders - Yeni emir oluştur (korumalı)
+// Supports: order_type (LIMIT, MARKET, STOP_LOSS, TAKE_PROFIT, STOP_LIMIT)
+// time_in_force (GTC, GTD, IOC, FOK), expires_at, trigger_price
 router.post('/', authMiddleware, orderController.createOrder);
 
 // GET /api/v1/orders - Kullanıcının emirlerini listele (korumalı)
 // Query params: ?status=OPEN&marketId=xxx&type=BUY
 router.get('/', authMiddleware, orderController.getMyOrders);
+
+// GET /api/v1/orders/conditional - Koşullu emirleri listele (stop-loss, take-profit)
+// Query params: ?marketId=xxx
+router.get('/conditional', authMiddleware, orderController.getConditionalOrders);
 
 // POST /api/v1/orders/batch - Birden fazla emir oluştur (korumalı)
 router.post('/batch', authMiddleware, orderController.createBatchOrders);

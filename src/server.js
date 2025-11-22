@@ -13,6 +13,8 @@ const migration = require('../migrations/add-multiple-choice-support');
 const multipleChoiceMigration = require('../migrations/add-multiple-choice-support');
 const userProfileMigration = require('../migrations/add-user-profile-fields');
 const timestampMigration = require('../migrations/add-timestamps-to-all-tables'); // ⭐ YENİ
+const advancedOrdersMigration = require('../migrations/add-advanced-order-types');
+const priceHistoryMigration = require('../migrations/add-price-history');
 
 console.log('📦 Route modülleri yükleniyor...');
 // routes import...
@@ -30,6 +32,7 @@ const optionRoutes = require('./routes/option.route');
 const walletRoutes = require('./routes/wallet.route');
 const contractRoutes = require('./routes/contract.route');
 const marketService = require('./services/market.service');
+const schedulerService = require('./services/scheduler.service');
 console.log('✅ Route modülleri yüklendi');
 
 const app = express();
@@ -210,11 +213,41 @@ async function startServer() {
       }
     }
 
+    // 4. Advanced Order Types Migration
+    try {
+      console.log('🔄 Advanced Order Types Migration kontrol ediliyor...');
+      await advancedOrdersMigration.up(db.sequelize.queryInterface, db.Sequelize);
+      console.log('✅ Advanced Order Types Migration tamamlandı!');
+    } catch (error) {
+      if (error.message?.includes('already exists')) {
+        console.log('ℹ️ Advanced Order Types Migration zaten uygulanmış.');
+      } else {
+        console.error('⚠️ Migration hatası:', error.message);
+      }
+    }
+
+    // 5. Price History Migration
+    try {
+      console.log('🔄 Price History Migration kontrol ediliyor...');
+      await priceHistoryMigration.up(db.sequelize.queryInterface, db.Sequelize);
+      console.log('✅ Price History Migration tamamlandı!');
+    } catch (error) {
+      if (error.message?.includes('already exists')) {
+        console.log('ℹ️ Price History Migration zaten uygulanmış.');
+      } else {
+        console.error('⚠️ Migration hatası:', error.message);
+      }
+    }
+
     await websocketServer.initialize(server);
     console.log('✓ WebSocket sunucusu başlatıldı.');
 
     // Order book'ları initialize et
     await marketService.initializeAllOrderBooks();
+
+    // Initialize scheduler for order expiration and price history
+    schedulerService.initialize();
+    console.log('✓ Scheduler servisi başlatıldı.');
 
     server.listen(PORT, () => {
       console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

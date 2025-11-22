@@ -6,6 +6,24 @@ const redisClient = require('../../config/redis');
 const ApiError = require('../utils/apiError');
 const websocketServer = require('../../config/websocket');
 const marketService = require('./market.service');
+const priceHistoryService = require('./priceHistory.service');
+
+// Order type constants
+const ORDER_TYPES = {
+  LIMIT: 'LIMIT',
+  MARKET: 'MARKET',
+  STOP_LOSS: 'STOP_LOSS',
+  TAKE_PROFIT: 'TAKE_PROFIT',
+  STOP_LIMIT: 'STOP_LIMIT'
+};
+
+// Time-in-force constants
+const TIME_IN_FORCE = {
+  GTC: 'GTC',  // Good-Til-Cancelled
+  GTD: 'GTD',  // Good-Til-Date
+  IOC: 'IOC',  // Immediate-Or-Cancel
+  FOK: 'FOK'   // Fill-Or-Kill
+};
 
 const getMarketKeys = (marketId, outcome) => {
   const outcomeString = outcome ? 'yes' : 'no';
@@ -17,7 +35,30 @@ const getMarketKeys = (marketId, outcome) => {
 
 class OrderService {
   async createOrder(orderData) {
-    let { userId, marketId, type, outcome, quantity, price } = orderData;
+    let {
+      userId,
+      marketId,
+      type,
+      outcome,
+      quantity,
+      price,
+      // New advanced order fields
+      order_type = ORDER_TYPES.LIMIT,
+      time_in_force = TIME_IN_FORCE.GTC,
+      expires_at = null,
+      trigger_price = null
+    } = orderData;
+
+    // Route to appropriate handler based on order type
+    if (order_type === ORDER_TYPES.MARKET) {
+      return this.createMarketOrder({ userId, marketId, type, outcome, quantity, time_in_force });
+    }
+
+    if (order_type === ORDER_TYPES.STOP_LOSS || order_type === ORDER_TYPES.TAKE_PROFIT || order_type === ORDER_TYPES.STOP_LIMIT) {
+      return this.createConditionalOrder({ userId, marketId, type, outcome, quantity, price, order_type, trigger_price, time_in_force, expires_at });
+    }
+
+    // Standard LIMIT order flow continues below
     const initialQuantity = quantity;
     const t = await sequelize.transaction();
 
@@ -26,13 +67,21 @@ class OrderService {
       const market = await Market.findByPk(marketId, { transaction: t });
       if (!market) throw ApiError.notFound('Pazar bulunamadı.');
       if (market.status !== 'open') throw ApiError.badRequest('Pazar işlem için açık değil.');
-      
+
       // ✅ YENİ: Kapanış tarihi kontrolü (real-time)
       const now = new Date();
       if (market.closing_date && new Date(market.closing_date) <= now) {
         throw ApiError.badRequest('Pazar kapanış saati geçmiş, yeni emir kabul edilmiyor.');
       }
-      
+
+      // Validate time_in_force for GTD orders
+      if (time_in_force === TIME_IN_FORCE.GTD && !expires_at) {
+        throw ApiError.badRequest('GTD emirleri için expires_at zorunludur.');
+      }
+      if (expires_at && new Date(expires_at) <= now) {
+        throw ApiError.badRequest('Geçersiz son kullanma tarihi.');
+      }
+
       // ✅ Fiyat validasyonu (0.01 - 0.99 aralığı)
       if (price < 0.01 || price > 0.99) {
         throw ApiError.badRequest('Fiyat 0.01 TL ile 0.99 TL arasında olmalıdır.');
@@ -72,14 +121,18 @@ class OrderService {
         await buyer.save({ transaction: t });
 
         // ✅ YENİ: Önce BUY order'ı oluştur (eşleşme öncesi)
-        newBuyOrder = await Order.create({ 
-          userId, 
-          marketId, 
-          type: 'BUY', 
-          outcome, 
-          quantity, 
-          price, 
-          status: 'OPEN' 
+        newBuyOrder = await Order.create({
+          userId,
+          marketId,
+          type: 'BUY',
+          outcome,
+          quantity,
+          price,
+          status: 'OPEN',
+          order_type: order_type || 'LIMIT',
+          time_in_force: time_in_force || 'GTC',
+          expires_at: expires_at || null,
+          filled_quantity: 0
         }, { transaction: t });
 
         // Eşleşme kontrolü
@@ -278,14 +331,18 @@ class OrderService {
         }
 
         // ✅ YENİ: Önce SELL order'ı oluştur (eşleşme öncesi)
-        const newSellOrder = await Order.create({ 
-          userId, 
-          marketId, 
-          type: 'SELL', 
-          outcome, 
-          quantity, 
-          price, 
-          status: 'OPEN' 
+        const newSellOrder = await Order.create({
+          userId,
+          marketId,
+          type: 'SELL',
+          outcome,
+          quantity,
+          price,
+          status: 'OPEN',
+          order_type: order_type || 'LIMIT',
+          time_in_force: time_in_force || 'GTC',
+          expires_at: expires_at || null,
+          filled_quantity: 0
         }, { transaction: t });
 
         await Transaction.create({
@@ -999,6 +1056,747 @@ class OrderService {
     }
 
     return results;
+  }
+
+  // ========== MARKET ORDERS ==========
+  /**
+   * Create a market order - executes immediately at best available price
+   * Market orders take liquidity from the order book
+   */
+  async createMarketOrder(orderData) {
+    const { userId, marketId, type, outcome, quantity, time_in_force = 'IOC' } = orderData;
+    const t = await sequelize.transaction();
+
+    try {
+      // Validations
+      const market = await Market.findByPk(marketId, { transaction: t });
+      if (!market) throw ApiError.notFound('Pazar bulunamadı.');
+      if (market.status !== 'open') throw ApiError.badRequest('Pazar işlem için açık değil.');
+
+      const now = new Date();
+      if (market.closing_date && new Date(market.closing_date) <= now) {
+        throw ApiError.badRequest('Pazar kapanış saati geçmiş.');
+      }
+
+      const { bids: bidsKey, asks: asksKey } = getMarketKeys(marketId, outcome);
+      let remainingQuantity = quantity;
+      let totalSpent = 0;
+      let totalFilled = 0;
+      const trades = [];
+      const balanceUpdates = [];
+
+      if (type === 'BUY') {
+        const buyer = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
+
+        // Get all available sell orders sorted by price (lowest first)
+        const sellOrders = await redisClient.zRangeWithScores(asksKey, 0, -1);
+
+        if (sellOrders.length === 0) {
+          throw ApiError.badRequest('Eşleşecek satış emri yok.');
+        }
+
+        // Calculate maximum possible cost for FOK validation
+        if (time_in_force === 'FOK') {
+          let availableQuantity = 0;
+          for (const order of sellOrders) {
+            const parts = order.value.split(':');
+            availableQuantity += parseInt(parts[1]);
+            if (availableQuantity >= quantity) break;
+          }
+          if (availableQuantity < quantity) {
+            throw ApiError.badRequest('FOK: Yeterli likidite yok, emir iptal edildi.');
+          }
+        }
+
+        // Create market order record
+        const marketOrder = await Order.create({
+          userId,
+          marketId,
+          type: 'BUY',
+          outcome,
+          quantity,
+          price: null, // Market orders have no set price
+          status: 'OPEN',
+          order_type: 'MARKET',
+          time_in_force,
+          filled_quantity: 0
+        }, { transaction: t });
+
+        // Match against sell orders
+        for (const sellOrderData of sellOrders) {
+          if (remainingQuantity === 0) break;
+
+          const sellPrice = sellOrderData.score;
+          const parts = sellOrderData.value.split(':');
+          const sellerOrderId = parts[0];
+          const sellerOrderQuantity = parseInt(parts[1]);
+          const sellerUserId = parts[2];
+
+          // Skip self-trading
+          if (sellerUserId === userId) continue;
+
+          const tradeQuantity = Math.min(remainingQuantity, sellerOrderQuantity);
+          const tradeTotal = tradeQuantity * sellPrice;
+
+          // Check buyer has enough balance
+          if (buyer.balance < totalSpent + tradeTotal) {
+            if (time_in_force === 'FOK') {
+              throw ApiError.badRequest('FOK: Yetersiz bakiye, emir iptal edildi.');
+            }
+            break; // IOC: fill what we can
+          }
+
+          totalSpent += tradeTotal;
+          totalFilled += tradeQuantity;
+
+          // Update seller
+          const sellOrder = await Order.findByPk(sellerOrderId, { transaction: t });
+          const seller = await User.findByPk(sellOrder.userId, { lock: t.LOCK.UPDATE, transaction: t });
+          seller.balance = parseFloat(seller.balance) + tradeTotal;
+          await seller.save({ transaction: t });
+          balanceUpdates.push({ userId: seller.id, balance: seller.balance });
+
+          // Create trade record
+          const trade = await Trade.create({
+            buyerId: buyer.id,
+            buyOrderId: marketOrder.id,
+            sellerId: seller.id,
+            sellOrderId: sellerOrderId,
+            marketId,
+            outcome,
+            quantity: tradeQuantity,
+            price: sellPrice,
+            total: tradeTotal,
+            tradeType: 'MARKET'
+          }, { transaction: t });
+          trades.push(trade);
+
+          // Record price history
+          await priceHistoryService.recordTrade(marketId, outcome, sellPrice, tradeQuantity);
+
+          // Transfer shares to buyer
+          let buyerShare = await Share.findOne({
+            where: { userId: buyer.id, marketId, outcome },
+            transaction: t
+          });
+          if (!buyerShare) {
+            buyerShare = await Share.create({ userId: buyer.id, marketId, outcome, quantity: 0 }, { transaction: t });
+          }
+          buyerShare.quantity += tradeQuantity;
+          await buyerShare.save({ transaction: t });
+
+          // Update Redis and sell order
+          remainingQuantity -= tradeQuantity;
+          const remainingSellerQty = sellerOrderQuantity - tradeQuantity;
+          await redisClient.zRem(asksKey, sellOrderData.value);
+
+          if (remainingSellerQty > 0) {
+            await redisClient.zAdd(asksKey, {
+              score: sellPrice,
+              value: `${sellerOrderId}:${remainingSellerQty}:${sellerUserId || ''}`
+            });
+            await Order.update(
+              { quantity: remainingSellerQty, filled_quantity: sequelize.literal(`filled_quantity + ${tradeQuantity}`) },
+              { where: { id: sellerOrderId }, transaction: t }
+            );
+          } else {
+            await Order.update(
+              { status: 'FILLED', filled_quantity: sequelize.literal(`filled_quantity + ${tradeQuantity}`) },
+              { where: { id: sellerOrderId }, transaction: t }
+            );
+          }
+        }
+
+        // Deduct from buyer
+        buyer.balance -= totalSpent;
+        await buyer.save({ transaction: t });
+        balanceUpdates.push({ userId: buyer.id, balance: buyer.balance });
+
+        // Update market order
+        const avgPrice = totalFilled > 0 ? totalSpent / totalFilled : 0;
+        marketOrder.filled_quantity = totalFilled;
+        marketOrder.average_fill_price = avgPrice;
+        marketOrder.quantity = quantity - totalFilled;
+        marketOrder.status = totalFilled === quantity ? 'FILLED' : (totalFilled > 0 ? 'FILLED' : 'CANCELLED');
+        await marketOrder.save({ transaction: t });
+
+        // Create transaction record
+        if (totalSpent > 0) {
+          await Transaction.create({
+            userId,
+            marketId,
+            type: 'bet',
+            amount: -totalSpent,
+            description: `Market BUY: ${totalFilled} adet ${outcome ? 'YES' : 'NO'} @ ortalama ${avgPrice.toFixed(4)}`
+          }, { transaction: t });
+        }
+
+      } else if (type === 'SELL') {
+        // SELL market order logic
+        const seller = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
+        const sellerShare = await Share.findOne({
+          where: { userId, marketId, outcome },
+          lock: t.LOCK.UPDATE,
+          transaction: t
+        });
+
+        if (!sellerShare || sellerShare.quantity < quantity) {
+          throw ApiError.badRequest('Satmak için yeterli hisseniz yok.');
+        }
+
+        // Get all buy orders sorted by price (highest first)
+        const buyOrders = await redisClient.zRangeWithScores(bidsKey, 0, -1, { REV: true });
+
+        if (buyOrders.length === 0) {
+          throw ApiError.badRequest('Eşleşecek alış emri yok.');
+        }
+
+        // FOK validation
+        if (time_in_force === 'FOK') {
+          let availableQuantity = 0;
+          for (const order of buyOrders) {
+            const parts = order.value.split(':');
+            availableQuantity += parseInt(parts[1]);
+            if (availableQuantity >= quantity) break;
+          }
+          if (availableQuantity < quantity) {
+            throw ApiError.badRequest('FOK: Yeterli likidite yok, emir iptal edildi.');
+          }
+        }
+
+        // Create market order record
+        const marketOrder = await Order.create({
+          userId,
+          marketId,
+          type: 'SELL',
+          outcome,
+          quantity,
+          price: null,
+          status: 'OPEN',
+          order_type: 'MARKET',
+          time_in_force,
+          filled_quantity: 0
+        }, { transaction: t });
+
+        // Lock shares
+        sellerShare.quantity -= quantity;
+
+        // Match against buy orders
+        for (const buyOrderData of buyOrders) {
+          if (remainingQuantity === 0) break;
+
+          const buyPrice = buyOrderData.score;
+          const parts = buyOrderData.value.split(':');
+          const buyerOrderId = parts[0];
+          const buyerOrderQuantity = parseInt(parts[1]);
+          const buyerUserId = parts[2];
+
+          // Skip self-trading
+          if (buyerUserId === userId) continue;
+
+          const tradeQuantity = Math.min(remainingQuantity, buyerOrderQuantity);
+          const tradeTotal = tradeQuantity * buyPrice;
+
+          totalSpent += tradeTotal;
+          totalFilled += tradeQuantity;
+
+          // Update buyer - give shares
+          const buyOrder = await Order.findByPk(buyerOrderId, { transaction: t });
+          const buyer = await User.findByPk(buyOrder.userId, { lock: t.LOCK.UPDATE, transaction: t });
+
+          let buyerShare = await Share.findOne({
+            where: { userId: buyer.id, marketId, outcome },
+            transaction: t
+          });
+          if (!buyerShare) {
+            buyerShare = await Share.create({ userId: buyer.id, marketId, outcome, quantity: 0 }, { transaction: t });
+          }
+          buyerShare.quantity += tradeQuantity;
+          await buyerShare.save({ transaction: t });
+
+          // Create trade record
+          const trade = await Trade.create({
+            buyerId: buyer.id,
+            buyOrderId: buyerOrderId,
+            sellerId: seller.id,
+            sellOrderId: marketOrder.id,
+            marketId,
+            outcome,
+            quantity: tradeQuantity,
+            price: buyPrice,
+            total: tradeTotal,
+            tradeType: 'MARKET'
+          }, { transaction: t });
+          trades.push(trade);
+
+          // Record price history
+          await priceHistoryService.recordTrade(marketId, outcome, buyPrice, tradeQuantity);
+
+          // Update Redis and buy order
+          remainingQuantity -= tradeQuantity;
+          const remainingBuyerQty = buyerOrderQuantity - tradeQuantity;
+          await redisClient.zRem(bidsKey, buyOrderData.value);
+
+          if (remainingBuyerQty > 0) {
+            await redisClient.zAdd(bidsKey, {
+              score: buyPrice,
+              value: `${buyerOrderId}:${remainingBuyerQty}:${buyerUserId || ''}`
+            });
+            await Order.update(
+              { quantity: remainingBuyerQty, filled_quantity: sequelize.literal(`filled_quantity + ${tradeQuantity}`) },
+              { where: { id: buyerOrderId }, transaction: t }
+            );
+          } else {
+            await Order.update(
+              { status: 'FILLED', filled_quantity: sequelize.literal(`filled_quantity + ${tradeQuantity}`) },
+              { where: { id: buyerOrderId }, transaction: t }
+            );
+          }
+        }
+
+        // Give money to seller
+        seller.balance = parseFloat(seller.balance) + totalSpent;
+        await seller.save({ transaction: t });
+        balanceUpdates.push({ userId: seller.id, balance: seller.balance });
+
+        // Return unfilled shares
+        if (remainingQuantity > 0) {
+          sellerShare.quantity += remainingQuantity;
+        }
+        await sellerShare.save({ transaction: t });
+        if (sellerShare.quantity === 0) {
+          await sellerShare.destroy({ transaction: t });
+        }
+
+        // Update market order
+        const avgPrice = totalFilled > 0 ? totalSpent / totalFilled : 0;
+        marketOrder.filled_quantity = totalFilled;
+        marketOrder.average_fill_price = avgPrice;
+        marketOrder.quantity = quantity - totalFilled;
+        marketOrder.status = totalFilled === quantity ? 'FILLED' : (totalFilled > 0 ? 'FILLED' : 'CANCELLED');
+        await marketOrder.save({ transaction: t });
+
+        // Create transaction record
+        if (totalSpent > 0) {
+          await Transaction.create({
+            userId,
+            marketId,
+            type: 'payout',
+            amount: totalSpent,
+            description: `Market SELL: ${totalFilled} adet ${outcome ? 'YES' : 'NO'} @ ortalama ${avgPrice.toFixed(4)}`
+          }, { transaction: t });
+        }
+      }
+
+      await t.commit();
+
+      // Send WebSocket notifications
+      for (const { userId, balance } of balanceUpdates) {
+        try {
+          await websocketServer.publishBalanceUpdate(userId, balance);
+        } catch (error) {
+          console.error('Balance update WebSocket error:', error.message);
+        }
+      }
+
+      try {
+        await this.publishOrderBookUpdate(marketId);
+      } catch (error) {
+        console.error('Order book update error:', error.message);
+      }
+
+      const avgPrice = totalFilled > 0 ? totalSpent / totalFilled : 0;
+      return {
+        message: totalFilled === quantity
+          ? 'Market emri tamamen doldu.'
+          : (totalFilled > 0 ? `Market emri kısmen doldu: ${totalFilled}/${quantity}` : 'Market emri doldurulamadı.'),
+        order: {
+          filled_quantity: totalFilled,
+          average_fill_price: avgPrice,
+          total_spent: totalSpent,
+          trades_count: trades.length
+        }
+      };
+
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  }
+
+  // ========== CONDITIONAL ORDERS (STOP-LOSS, TAKE-PROFIT) ==========
+  /**
+   * Create a conditional order that triggers when price reaches trigger_price
+   */
+  async createConditionalOrder(orderData) {
+    const {
+      userId,
+      marketId,
+      type,
+      outcome,
+      quantity,
+      price,
+      order_type,
+      trigger_price,
+      time_in_force = 'GTC',
+      expires_at = null
+    } = orderData;
+
+    // Validations
+    if (!trigger_price) {
+      throw ApiError.badRequest('Koşullu emirler için trigger_price zorunludur.');
+    }
+    if (trigger_price < 0.01 || trigger_price > 0.99) {
+      throw ApiError.badRequest('Trigger fiyatı 0.01 ile 0.99 arasında olmalıdır.');
+    }
+
+    // For STOP_LIMIT orders, price is required
+    if (order_type === ORDER_TYPES.STOP_LIMIT && (!price || price < 0.01 || price > 0.99)) {
+      throw ApiError.badRequest('STOP_LIMIT emirleri için geçerli bir limit fiyatı gereklidir.');
+    }
+
+    const t = await sequelize.transaction();
+
+    try {
+      const market = await Market.findByPk(marketId, { transaction: t });
+      if (!market) throw ApiError.notFound('Pazar bulunamadı.');
+      if (market.status !== 'open') throw ApiError.badRequest('Pazar işlem için açık değil.');
+
+      const now = new Date();
+      if (time_in_force === 'GTD' && !expires_at) {
+        throw ApiError.badRequest('GTD emirleri için expires_at zorunludur.');
+      }
+      if (expires_at && new Date(expires_at) <= now) {
+        throw ApiError.badRequest('Geçersiz son kullanma tarihi.');
+      }
+
+      // For BUY orders, reserve the funds
+      if (type === 'BUY') {
+        const user = await User.findByPk(userId, { lock: t.LOCK.UPDATE, transaction: t });
+        const reservePrice = price || trigger_price; // Use limit price or trigger price
+        const totalCost = quantity * reservePrice;
+
+        if (user.balance < totalCost) {
+          throw ApiError.badRequest('Yetersiz bakiye.');
+        }
+
+        user.balance -= totalCost;
+        await user.save({ transaction: t });
+
+        await Transaction.create({
+          userId,
+          marketId,
+          type: 'bet',
+          amount: -totalCost,
+          description: `${order_type} emri için bakiye ayrıldı: ${quantity} x ${reservePrice}`
+        }, { transaction: t });
+      }
+
+      // For SELL orders, lock the shares
+      if (type === 'SELL') {
+        const share = await Share.findOne({
+          where: { userId, marketId, outcome },
+          lock: t.LOCK.UPDATE,
+          transaction: t
+        });
+
+        if (!share || share.quantity < quantity) {
+          throw ApiError.badRequest('Satmak için yeterli hisseniz yok.');
+        }
+
+        share.quantity -= quantity;
+        await share.save({ transaction: t });
+
+        if (share.quantity === 0) {
+          await share.destroy({ transaction: t });
+        }
+      }
+
+      // Create the conditional order
+      const conditionalOrder = await Order.create({
+        userId,
+        marketId,
+        type,
+        outcome,
+        quantity,
+        price: order_type === ORDER_TYPES.STOP_LIMIT ? price : null,
+        status: 'OPEN',
+        order_type,
+        time_in_force,
+        expires_at,
+        trigger_price,
+        filled_quantity: 0
+      }, { transaction: t });
+
+      // Store in Redis for quick trigger checking
+      const triggerKey = `triggers:${marketId}:${outcome}`;
+      await redisClient.zAdd(triggerKey, {
+        score: parseFloat(trigger_price),
+        value: `${conditionalOrder.id}:${order_type}:${type}`
+      });
+
+      await t.commit();
+
+      return {
+        message: `${order_type} emri oluşturuldu. Fiyat ${trigger_price}'a ulaştığında tetiklenecek.`,
+        order: conditionalOrder
+      };
+
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
+  }
+
+  /**
+   * Check and trigger conditional orders when price changes
+   * Should be called after each trade
+   */
+  async checkAndTriggerConditionalOrders(marketId, outcome, currentPrice) {
+    const triggerKey = `triggers:${marketId}:${outcome}`;
+
+    // Get all potential triggers
+    const triggers = await redisClient.zRangeWithScores(triggerKey, 0, -1);
+
+    for (const trigger of triggers) {
+      const [orderId, orderType, tradeType] = trigger.value.split(':');
+      const triggerPrice = trigger.score;
+
+      let shouldTrigger = false;
+
+      // STOP_LOSS: triggers when price falls below trigger_price (for long) or rises above (for short)
+      // TAKE_PROFIT: triggers when price rises above trigger_price (for long) or falls below (for short)
+      if (orderType === 'STOP_LOSS') {
+        if (tradeType === 'SELL') {
+          // Long position stop-loss: trigger when price drops
+          shouldTrigger = currentPrice <= triggerPrice;
+        } else {
+          // Short position stop-loss: trigger when price rises
+          shouldTrigger = currentPrice >= triggerPrice;
+        }
+      } else if (orderType === 'TAKE_PROFIT') {
+        if (tradeType === 'SELL') {
+          // Long position take-profit: trigger when price rises
+          shouldTrigger = currentPrice >= triggerPrice;
+        } else {
+          // Short position take-profit: trigger when price drops
+          shouldTrigger = currentPrice <= triggerPrice;
+        }
+      } else if (orderType === 'STOP_LIMIT') {
+        // Same as STOP_LOSS but creates a limit order instead of market order
+        if (tradeType === 'SELL') {
+          shouldTrigger = currentPrice <= triggerPrice;
+        } else {
+          shouldTrigger = currentPrice >= triggerPrice;
+        }
+      }
+
+      if (shouldTrigger) {
+        await this.executeTriggeredOrder(orderId, orderType);
+        await redisClient.zRem(triggerKey, trigger.value);
+      }
+    }
+  }
+
+  /**
+   * Execute a triggered conditional order
+   */
+  async executeTriggeredOrder(orderId, orderType) {
+    const t = await sequelize.transaction();
+
+    try {
+      const order = await Order.findByPk(orderId, { transaction: t });
+
+      if (!order || order.status !== 'OPEN') {
+        await t.rollback();
+        return;
+      }
+
+      // Mark as triggered
+      order.triggered_at = new Date();
+      order.status = 'TRIGGERED';
+      await order.save({ transaction: t });
+
+      await t.commit();
+
+      // Execute based on order type
+      if (orderType === 'STOP_LIMIT') {
+        // Create a limit order at the specified price
+        await this.createOrder({
+          userId: order.userId,
+          marketId: order.marketId,
+          type: order.type,
+          outcome: order.outcome,
+          quantity: order.quantity,
+          price: order.price,
+          order_type: 'LIMIT',
+          time_in_force: order.time_in_force,
+          expires_at: order.expires_at
+        });
+      } else {
+        // Execute as market order
+        await this.createMarketOrder({
+          userId: order.userId,
+          marketId: order.marketId,
+          type: order.type,
+          outcome: order.outcome,
+          quantity: order.quantity,
+          time_in_force: 'IOC'
+        });
+      }
+
+      console.log(`🎯 Conditional order ${orderId} triggered and executed`);
+
+      // Send WebSocket notification
+      try {
+        await websocketServer.publishOrderFilled(order.userId, {
+          orderId: order.id,
+          marketId: order.marketId,
+          orderType: orderType,
+          status: 'TRIGGERED',
+          message: `${orderType} emriniz tetiklendi`
+        });
+      } catch (error) {
+        console.error('Trigger notification error:', error.message);
+      }
+
+    } catch (error) {
+      await t.rollback();
+      console.error(`Error executing triggered order ${orderId}:`, error.message);
+    }
+  }
+
+  /**
+   * Get pending conditional orders for a user
+   */
+  async getConditionalOrders(userId, marketId = null) {
+    const where = {
+      userId,
+      status: 'OPEN',
+      order_type: { [Op.in]: ['STOP_LOSS', 'TAKE_PROFIT', 'STOP_LIMIT'] }
+    };
+
+    if (marketId) {
+      where.marketId = marketId;
+    }
+
+    const orders = await Order.findAll({
+      where,
+      include: [{ model: Market, attributes: ['id', 'title', 'status'] }],
+      order: [['createdAt', 'DESC']]
+    });
+
+    return orders;
+  }
+
+  /**
+   * Cancel expired orders (called by scheduler)
+   */
+  async cancelExpiredOrders() {
+    const now = new Date();
+
+    const expiredOrders = await Order.findAll({
+      where: {
+        status: 'OPEN',
+        time_in_force: 'GTD',
+        expires_at: { [Op.lte]: now }
+      }
+    });
+
+    let cancelledCount = 0;
+
+    for (const order of expiredOrders) {
+      try {
+        // Remove from Redis
+        const { bids: bidsKey, asks: asksKey } = getMarketKeys(order.marketId, order.outcome);
+        const redisKey = order.type === 'BUY' ? bidsKey : asksKey;
+
+        const allOrders = await redisClient.zRangeWithScores(redisKey, 0, -1);
+        for (const redisOrder of allOrders) {
+          if (redisOrder.value.startsWith(`${order.id}:`)) {
+            await redisClient.zRem(redisKey, redisOrder.value);
+            break;
+          }
+        }
+
+        // Refund user
+        if (order.type === 'BUY') {
+          const refundAmount = parseFloat(order.quantity) * parseFloat(order.price);
+          await User.increment('balance', { by: refundAmount, where: { id: order.userId } });
+
+          await Transaction.create({
+            userId: order.userId,
+            marketId: order.marketId,
+            type: 'refund',
+            amount: refundAmount,
+            description: `GTD emir süresi doldu: ${order.quantity} x ${order.price} = ${refundAmount} TL iade`
+          });
+        } else if (order.type === 'SELL') {
+          // Return shares
+          let share = await Share.findOne({
+            where: { userId: order.userId, marketId: order.marketId, outcome: order.outcome }
+          });
+
+          if (!share) {
+            share = await Share.create({
+              userId: order.userId,
+              marketId: order.marketId,
+              outcome: order.outcome,
+              quantity: order.quantity
+            });
+          } else {
+            share.quantity += parseInt(order.quantity);
+            await share.save();
+          }
+
+          await Transaction.create({
+            userId: order.userId,
+            marketId: order.marketId,
+            type: 'refund',
+            amount: 0,
+            description: `GTD emir süresi doldu: ${order.quantity} adet ${order.outcome ? 'YES' : 'NO'} hisse iade`
+          });
+        }
+
+        // Remove from triggers if conditional
+        if (['STOP_LOSS', 'TAKE_PROFIT', 'STOP_LIMIT'].includes(order.order_type)) {
+          const triggerKey = `triggers:${order.marketId}:${order.outcome}`;
+          const allTriggers = await redisClient.zRangeWithScores(triggerKey, 0, -1);
+          for (const trigger of allTriggers) {
+            if (trigger.value.startsWith(`${order.id}:`)) {
+              await redisClient.zRem(triggerKey, trigger.value);
+              break;
+            }
+          }
+        }
+
+        // Update order status
+        order.status = 'EXPIRED';
+        await order.save();
+
+        cancelledCount++;
+
+        // Notify user
+        try {
+          await websocketServer.publishOrderCancelled(order.userId, {
+            orderId: order.id,
+            reason: 'expired',
+            message: 'Emir süresi doldu ve iptal edildi.'
+          });
+        } catch (e) {
+          console.error('Expiration notification error:', e.message);
+        }
+
+      } catch (error) {
+        console.error(`Error cancelling expired order ${order.id}:`, error.message);
+      }
+    }
+
+    if (cancelledCount > 0) {
+      console.log(`⏰ Cancelled ${cancelledCount} expired orders`);
+    }
+
+    return cancelledCount;
   }
 }
 

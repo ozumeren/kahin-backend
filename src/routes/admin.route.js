@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/admin.controller');
+const priceHistoryController = require('../controllers/priceHistory.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 const adminMiddleware = require('../middlewares/admin.middleware');
 const marketAutomation = require('../services/market.automation.service');
@@ -81,6 +82,13 @@ router.post('/users/:id/add-shares',
   authMiddleware,
   adminMiddleware,
   adminController.addSharesToUser
+);
+
+// Backfill price history from existing trades
+router.post('/markets/:id/backfill-prices',
+  authMiddleware,
+  adminMiddleware,
+  priceHistoryController.backfillPrices
 );
 
 module.exports = router;
