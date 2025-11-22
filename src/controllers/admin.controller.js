@@ -2,6 +2,7 @@
 const marketService = require('../services/market.service');
 const userService = require('../services/user.service');
 const shareService = require('../services/share.service');
+const adminService = require('../services/admin.service');
 const { generateUniqueContractCode } = require('../utils/contract-code.util');
 const db = require('../models');
 const { Market, MarketOption, User } = db;
@@ -412,15 +413,327 @@ class AdminController {
 
       const result = await shareService.addSharesAdmin(id, marketId, outcome, quantity);
       
-      res.status(200).json({ 
+      res.status(200).json({
         message: `${quantity} adet hisse başarıyla eklendi.`,
         data: result
       });
     } catch (error) {
       console.error('Hisse ekleme hatası:', error);
-      res.status(400).json({ 
-        message: 'Hisse eklenirken bir hata oluştu.', 
-        error: error.message 
+      res.status(400).json({
+        message: 'Hisse eklenirken bir hata oluştu.',
+        error: error.message
+      });
+    }
+  }
+
+  // ========== DASHBOARD ==========
+
+  async getDashboard(req, res) {
+    try {
+      const stats = await adminService.getDashboardStats();
+      res.status(200).json({
+        success: true,
+        data: stats
+      });
+    } catch (error) {
+      console.error('Dashboard hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Dashboard verileri alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getRecentActivity(req, res) {
+    try {
+      const { limit = 50 } = req.query;
+      const activities = await adminService.getRecentActivity(parseInt(limit));
+      res.status(200).json({
+        success: true,
+        data: activities
+      });
+    } catch (error) {
+      console.error('Recent activity hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Aktiviteler alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  // ========== USER MANAGEMENT ==========
+
+  async getUserDetails(req, res) {
+    try {
+      const { id } = req.params;
+      const data = await adminService.getUserDetails(id);
+      res.status(200).json({
+        success: true,
+        data
+      });
+    } catch (error) {
+      console.error('User details hatası:', error);
+      res.status(404).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async banUser(req, res) {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const adminId = req.user.id;
+
+      const user = await adminService.banUser(id, reason, adminId);
+      res.status(200).json({
+        success: true,
+        message: 'Kullanıcı banlandı',
+        data: user
+      });
+    } catch (error) {
+      console.error('Ban user hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async unbanUser(req, res) {
+    try {
+      const { id } = req.params;
+      const user = await adminService.unbanUser(id);
+      res.status(200).json({
+        success: true,
+        message: 'Kullanıcının banı kaldırıldı',
+        data: user
+      });
+    } catch (error) {
+      console.error('Unban user hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async getUserActivity(req, res) {
+    try {
+      const { id } = req.params;
+      const { limit = 50 } = req.query;
+      const activities = await adminService.getUserActivity(id, parseInt(limit));
+      res.status(200).json({
+        success: true,
+        data: activities
+      });
+    } catch (error) {
+      console.error('User activity hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  // ========== CONTRACTS MANAGEMENT ==========
+
+  async getAllContracts(req, res) {
+    try {
+      const { status } = req.query;
+      const contracts = await adminService.getAllContracts({ status });
+      res.status(200).json({
+        success: true,
+        count: contracts.length,
+        data: contracts
+      });
+    } catch (error) {
+      console.error('Get contracts hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Kontratlar alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getContractDetails(req, res) {
+    try {
+      const { id } = req.params;
+      const contract = await adminService.getContractDetails(id);
+      res.status(200).json({
+        success: true,
+        data: contract
+      });
+    } catch (error) {
+      console.error('Contract details hatası:', error);
+      res.status(404).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async approveContract(req, res) {
+    try {
+      const { id } = req.params;
+      const adminId = req.user.id;
+      const contract = await adminService.approveContract(id, adminId);
+      res.status(200).json({
+        success: true,
+        message: 'Kontrat onaylandı',
+        data: contract
+      });
+    } catch (error) {
+      console.error('Approve contract hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async rejectContract(req, res) {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const adminId = req.user.id;
+      const contract = await adminService.rejectContract(id, adminId, reason);
+      res.status(200).json({
+        success: true,
+        message: 'Kontrat reddedildi',
+        data: contract
+      });
+    } catch (error) {
+      console.error('Reject contract hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async publishContract(req, res) {
+    try {
+      const { id } = req.params;
+      const adminId = req.user.id;
+      const contract = await adminService.publishContract(id, adminId);
+      res.status(200).json({
+        success: true,
+        message: 'Kontrat yayınlandı',
+        data: contract
+      });
+    } catch (error) {
+      console.error('Publish contract hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  // ========== ANALYTICS ==========
+
+  async getUserGrowthAnalytics(req, res) {
+    try {
+      const { days = 30 } = req.query;
+      const data = await adminService.getUserGrowthAnalytics(parseInt(days));
+      res.status(200).json({
+        success: true,
+        data
+      });
+    } catch (error) {
+      console.error('User growth analytics hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Analytics alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getVolumeAnalytics(req, res) {
+    try {
+      const { days = 30 } = req.query;
+      const data = await adminService.getVolumeAnalytics(parseInt(days));
+      res.status(200).json({
+        success: true,
+        data
+      });
+    } catch (error) {
+      console.error('Volume analytics hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Analytics alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getMarketAnalytics(req, res) {
+    try {
+      const data = await adminService.getMarketAnalytics();
+      res.status(200).json({
+        success: true,
+        data
+      });
+    } catch (error) {
+      console.error('Market analytics hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Analytics alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  // ========== ORDERS MANAGEMENT ==========
+
+  async getAllOrders(req, res) {
+    try {
+      const { status, marketId, userId, order_type, limit = 100, offset = 0 } = req.query;
+      const result = await adminService.getAllOrders({
+        status,
+        marketId,
+        userId,
+        order_type,
+        limit: parseInt(limit),
+        offset: parseInt(offset)
+      });
+      res.status(200).json({
+        success: true,
+        count: result.count,
+        data: result.orders
+      });
+    } catch (error) {
+      console.error('Get all orders hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Emirler alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async cancelOrderAdmin(req, res) {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const adminId = req.user.id;
+      const order = await adminService.cancelOrderAdmin(id, adminId, reason);
+      res.status(200).json({
+        success: true,
+        message: 'Emir iptal edildi',
+        data: order
+      });
+    } catch (error) {
+      console.error('Cancel order hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
       });
     }
   }

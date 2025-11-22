@@ -19,6 +19,7 @@ const featuredColumnsMigration = require('../migrations/add-featured-columns');
 const fixTimestampDefaultsMigration = require('../migrations/fix-timestamp-defaults');
 const fixOrderPriceNullable = require('../migrations/fix-order-price-nullable');
 const addContractCodeToMarkets = require('../migrations/add-contract-code-to-markets');
+const addUserBanFields = require('../migrations/add-user-ban-fields');
 
 console.log('📦 Route modülleri yükleniyor...');
 // routes import...
@@ -279,6 +280,15 @@ async function startServer() {
       console.log('🔄 Contract Code Migration kontrol ediliyor...');
       await addContractCodeToMarkets.up(db.sequelize);
       console.log('✅ Contract Code Migration tamamlandı!');
+    } catch (error) {
+      console.error('⚠️ Migration hatası:', error.message);
+    }
+
+    // 10. Add User Ban Fields Migration
+    try {
+      console.log('🔄 User Ban Fields Migration kontrol ediliyor...');
+      await addUserBanFields.up(db.sequelize);
+      console.log('✅ User Ban Fields Migration tamamlandı!');
     } catch (error) {
       console.error('⚠️ Migration hatası:', error.message);
     }

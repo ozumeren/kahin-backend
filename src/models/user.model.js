@@ -55,6 +55,23 @@ const User = sequelize.define('User', {
     type: DataTypes.DATE,
     allowNull: false,
     defaultValue: DataTypes.NOW
+  },
+  // Ban fields
+  banned: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  banned_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  banned_by: {
+    type: DataTypes.UUID,
+    allowNull: true
+  },
+  ban_reason: {
+    type: DataTypes.TEXT,
+    allowNull: true
   }
 }, {
   tableName: 'users',
