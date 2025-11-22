@@ -64,6 +64,11 @@ const Market = sequelize.define('Market', {
     type: DataTypes.STRING,
     allowNull: true,
     unique: true
+  },
+  contract_code: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    unique: true
   }
 }, {
   tableName: 'markets',
@@ -87,6 +92,12 @@ const Market = sequelize.define('Market', {
     {
       name: 'idx_markets_view_count',
       fields: ['view_count']
+    },
+    // Contract code için
+    {
+      name: 'idx_markets_contract_code',
+      fields: ['contract_code'],
+      unique: true
     }
   ]
 });

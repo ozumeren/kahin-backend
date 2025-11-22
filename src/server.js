@@ -18,6 +18,7 @@ const priceHistoryMigration = require('../migrations/add-price-history');
 const featuredColumnsMigration = require('../migrations/add-featured-columns');
 const fixTimestampDefaultsMigration = require('../migrations/fix-timestamp-defaults');
 const fixOrderPriceNullable = require('../migrations/fix-order-price-nullable');
+const addContractCodeToMarkets = require('../migrations/add-contract-code-to-markets');
 
 console.log('📦 Route modülleri yükleniyor...');
 // routes import...
@@ -269,6 +270,15 @@ async function startServer() {
       console.log('🔄 Order Price Nullable Migration kontrol ediliyor...');
       await fixOrderPriceNullable.up(db.sequelize.getQueryInterface(), db.Sequelize);
       console.log('✅ Order Price Nullable Migration tamamlandı!');
+    } catch (error) {
+      console.error('⚠️ Migration hatası:', error.message);
+    }
+
+    // 9. Add Contract Code to Markets Migration
+    try {
+      console.log('🔄 Contract Code Migration kontrol ediliyor...');
+      await addContractCodeToMarkets.up(db.sequelize);
+      console.log('✅ Contract Code Migration tamamlandı!');
     } catch (error) {
       console.error('⚠️ Migration hatası:', error.message);
     }

@@ -2,6 +2,7 @@
 const marketService = require('../services/market.service');
 const userService = require('../services/user.service');
 const shareService = require('../services/share.service');
+const { generateUniqueContractCode } = require('../utils/contract-code.util');
 const db = require('../models');
 const { Market, MarketOption, User } = db;
 
@@ -202,6 +203,13 @@ class AdminController {
         }
       }
 
+      // Generate contract code
+      const contractCode = await generateUniqueContractCode({
+        title,
+        category: category || 'other',
+        closing_date
+      }, Market);
+
       const marketData = {
         title,
         description,
@@ -209,6 +217,7 @@ class AdminController {
         closing_date,
         image_url,
         market_type: marketTypeValue,
+        contract_code: contractCode,
         status: 'open'
       };
 
