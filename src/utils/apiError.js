@@ -34,6 +34,10 @@ class ApiError extends Error {
     return new ApiError(409, message);
   }
 
+  static tooManyRequests(message = 'Çok fazla istek') {
+    return new ApiError(429, message);
+  }
+
   static internal(message = 'Sunucu hatası') {
     return new ApiError(500, message, false); // Kullanıcıya detay gösterme
   }

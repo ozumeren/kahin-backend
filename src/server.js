@@ -20,6 +20,7 @@ const fixTimestampDefaultsMigration = require('../migrations/fix-timestamp-defau
 const fixOrderPriceNullable = require('../migrations/fix-order-price-nullable');
 const addContractCodeToMarkets = require('../migrations/add-contract-code-to-markets');
 const addUserBanFields = require('../migrations/add-user-ban-fields');
+const addRefreshTokens = require('../migrations/add-refresh-tokens');
 
 console.log('📦 Route modülleri yükleniyor...');
 // routes import...
@@ -289,6 +290,15 @@ async function startServer() {
       console.log('🔄 User Ban Fields Migration kontrol ediliyor...');
       await addUserBanFields.up(db.sequelize);
       console.log('✅ User Ban Fields Migration tamamlandı!');
+    } catch (error) {
+      console.error('⚠️ Migration hatası:', error.message);
+    }
+
+    // 11. Add Refresh Tokens Migration
+    try {
+      console.log('🔄 Refresh Tokens Migration kontrol ediliyor...');
+      await addRefreshTokens.up(db.sequelize);
+      console.log('✅ Refresh Tokens Migration tamamlandı!');
     } catch (error) {
       console.error('⚠️ Migration hatası:', error.message);
     }

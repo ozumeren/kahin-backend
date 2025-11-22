@@ -14,6 +14,7 @@ const MarketContract = require('./marketContract.model');
 const ContractResolutionEvidence = require('./contractResolutionEvidence.model');
 const ContractAmendment = require('./contractAmendment.model');
 const PriceHistory = require('./priceHistory.model');
+const RefreshToken = require('./refreshToken.model');
 
 // User <-> Share
 User.hasMany(Share, { foreignKey: 'userId' });
@@ -209,6 +210,16 @@ PriceHistory.belongsTo(Market, {
   foreignKey: 'market_id'
 });
 
+// ===== RefreshToken İlişkileri =====
+User.hasMany(RefreshToken, {
+  as: 'refreshTokens',
+  foreignKey: 'user_id'
+});
+RefreshToken.belongsTo(User, {
+  as: 'user',
+  foreignKey: 'user_id'
+});
+
 const db = {
   sequelize,
   Sequelize,
@@ -225,7 +236,8 @@ const db = {
   MarketContract,
   ContractResolutionEvidence,
   ContractAmendment,
-  PriceHistory
+  PriceHistory,
+  RefreshToken
 };
 
 
