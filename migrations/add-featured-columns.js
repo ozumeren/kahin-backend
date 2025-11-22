@@ -7,46 +7,79 @@ module.exports = {
 
     console.log('🚀 Starting featured columns migration...');
 
-    // Check if column already exists
-    try {
-      const tableDescription = await queryInterface.describeTable('markets');
-      if (tableDescription.featured) {
-        console.log('ℹ️  featured column already exists, skipping migration...');
-        return;
-      }
-    } catch (error) {
-      console.log('Error checking table:', error.message);
+    const tableDescription = await queryInterface.describeTable('markets');
+
+    // Add featured column if not exists
+    if (!tableDescription.featured) {
+      console.log('➕ Adding featured column...');
+      await queryInterface.addColumn('markets', 'featured', {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+      });
     }
 
-    // Add featured column
-    console.log('➕ Adding featured column...');
-    await queryInterface.addColumn('markets', 'featured', {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false
-    });
+    // Add featured_at column if not exists
+    if (!tableDescription.featured_at) {
+      console.log('➕ Adding featured_at column...');
+      await queryInterface.addColumn('markets', 'featured_at', {
+        type: DataTypes.DATE,
+        allowNull: true
+      });
+    }
 
-    // Add featured_at column
-    console.log('➕ Adding featured_at column...');
-    await queryInterface.addColumn('markets', 'featured_at', {
-      type: DataTypes.DATE,
-      allowNull: true
-    });
+    // Add featured_weight column if not exists
+    if (!tableDescription.featured_weight) {
+      console.log('➕ Adding featured_weight column...');
+      await queryInterface.addColumn('markets', 'featured_weight', {
+        type: DataTypes.INTEGER,
+        defaultValue: 0
+      });
+    }
 
-    // Add featured_weight column
-    console.log('➕ Adding featured_weight column...');
-    await queryInterface.addColumn('markets', 'featured_weight', {
-      type: DataTypes.INTEGER,
-      defaultValue: 0
-    });
+    // Add view_count column if not exists
+    if (!tableDescription.view_count) {
+      console.log('➕ Adding view_count column...');
+      await queryInterface.addColumn('markets', 'view_count', {
+        type: DataTypes.INTEGER,
+        defaultValue: 0
+      });
+    }
 
-    // Add index for featured queries
-    console.log('🔍 Adding index for featured columns...');
+    // Add tags column if not exists
+    if (!tableDescription.tags) {
+      console.log('➕ Adding tags column...');
+      await queryInterface.addColumn('markets', 'tags', {
+        type: DataTypes.ARRAY(DataTypes.STRING),
+        defaultValue: []
+      });
+    }
+
+    // Add seo_slug column if not exists
+    if (!tableDescription.seo_slug) {
+      console.log('➕ Adding seo_slug column...');
+      await queryInterface.addColumn('markets', 'seo_slug', {
+        type: DataTypes.STRING,
+        allowNull: true,
+        unique: true
+      });
+    }
+
+    // Add indexes
+    console.log('🔍 Adding indexes...');
     try {
       await queryInterface.addIndex('markets', ['featured', 'featured_weight', 'createdAt'], {
         name: 'idx_markets_featured'
       });
     } catch (error) {
-      console.log('Index may already exist:', error.message);
+      console.log('Featured index may already exist');
+    }
+
+    try {
+      await queryInterface.addIndex('markets', ['view_count'], {
+        name: 'idx_markets_view_count'
+      });
+    } catch (error) {
+      console.log('View count index may already exist');
     }
 
     console.log('✅ Featured columns migration complete!');
