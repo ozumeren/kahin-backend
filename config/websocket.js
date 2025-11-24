@@ -7,6 +7,7 @@ class WebSocketServer {
     this.wss = null;
     this.subscriberClient = null;
     this.clients = new Map(); // marketId -> Set of WebSocket clients
+    this.conversationClients = new Map(); // conversationId -> Set of WebSocket clients
   }
 
   async initialize(server) {
@@ -89,7 +90,7 @@ class WebSocketServer {
   }
 
   async handleMessage(ws, data) {
-    const { type, marketId, userId } = data;
+    const { type, marketId, userId, conversationId } = data;
 
     switch (type) {
       case 'subscribe':
@@ -102,6 +103,23 @@ class WebSocketServer {
 
       case 'unsubscribe':
         this.unsubscribeFromMarket(ws, marketId);
+        break;
+
+      // ===== Mesajlaşma WebSocket Handlers =====
+      case 'subscribe_conversation':
+        this.subscribeToConversation(ws, conversationId, userId);
+        break;
+
+      case 'unsubscribe_conversation':
+        this.unsubscribeFromConversation(ws, conversationId);
+        break;
+
+      case 'typing_start':
+        this.broadcastTypingStatus(conversationId, userId, true);
+        break;
+
+      case 'typing_stop':
+        this.broadcastTypingStatus(conversationId, userId, false);
         break;
 
       case 'ping':
@@ -212,12 +230,124 @@ class WebSocketServer {
   }
 
   removeClient(ws) {
-    if (!ws.subscribedMarkets) return;
-
     // Client'ın abone olduğu tüm marketlerden çıkar
-    ws.subscribedMarkets.forEach((marketId) => {
-      this.unsubscribeFromMarket(ws, marketId);
+    if (ws.subscribedMarkets) {
+      ws.subscribedMarkets.forEach((marketId) => {
+        this.unsubscribeFromMarket(ws, marketId);
+      });
+    }
+
+    // Client'ın abone olduğu tüm konuşmalardan çıkar
+    if (ws.subscribedConversations) {
+      ws.subscribedConversations.forEach((conversationId) => {
+        this.unsubscribeFromConversation(ws, conversationId);
+      });
+    }
+  }
+
+  // ===== Mesajlaşma WebSocket Metodları =====
+
+  subscribeToConversation(ws, conversationId, userId) {
+    if (!conversationId) {
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: 'conversationId gereklidir',
+        timestamp: new Date().toISOString()
+      }));
+      return;
+    }
+
+    // UserId'yi WebSocket'e ekle
+    if (userId) {
+      ws.userId = String(userId);
+    }
+
+    // Client'ı bu konuşma için kaydet
+    if (!this.conversationClients.has(conversationId)) {
+      this.conversationClients.set(conversationId, new Set());
+    }
+
+    this.conversationClients.get(conversationId).add(ws);
+    ws.subscribedConversations = ws.subscribedConversations || new Set();
+    ws.subscribedConversations.add(conversationId);
+
+    ws.send(JSON.stringify({
+      type: 'conversation_subscribed',
+      conversationId,
+      message: `Konuşmaya abone oldunuz`,
+      timestamp: new Date().toISOString()
+    }));
+
+    console.log(`💬 Client ${conversationId} konuşmasına abone oldu. Toplam: ${this.conversationClients.get(conversationId).size}`);
+  }
+
+  unsubscribeFromConversation(ws, conversationId) {
+    if (!conversationId || !this.conversationClients.has(conversationId)) {
+      return;
+    }
+
+    this.conversationClients.get(conversationId).delete(ws);
+    if (ws.subscribedConversations) {
+      ws.subscribedConversations.delete(conversationId);
+    }
+
+    // Eğer bu konuşmaya abone kimse kalmadıysa temizle
+    if (this.conversationClients.get(conversationId).size === 0) {
+      this.conversationClients.delete(conversationId);
+      console.log(`💬 ${conversationId} konuşması için subscription kapatıldı`);
+    }
+
+    ws.send(JSON.stringify({
+      type: 'conversation_unsubscribed',
+      conversationId,
+      message: `Konuşma aboneliği iptal edildi`,
+      timestamp: new Date().toISOString()
+    }));
+  }
+
+  // Yazıyor... bildirimi
+  broadcastTypingStatus(conversationId, userId, isTyping) {
+    if (!conversationId || !this.conversationClients.has(conversationId)) return;
+
+    const message = JSON.stringify({
+      type: isTyping ? 'user_typing' : 'user_stopped_typing',
+      data: {
+        conversation_id: conversationId,
+        user_id: userId
+      },
+      timestamp: new Date().toISOString()
     });
+
+    this.conversationClients.get(conversationId).forEach((client) => {
+      // Yazanın kendisine gönderme
+      if (client.readyState === WebSocket.OPEN && client.userId !== String(userId)) {
+        client.send(message);
+      }
+    });
+  }
+
+  // Konuşmadaki tüm kullanıcılara mesaj gönder
+  broadcastToConversation(conversationId, data, excludeUserId = null) {
+    if (!this.conversationClients.has(conversationId)) return;
+
+    const message = JSON.stringify({
+      ...data,
+      timestamp: new Date().toISOString()
+    });
+
+    let sentCount = 0;
+    this.conversationClients.get(conversationId).forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        // excludeUserId varsa o kullanıcıya gönderme
+        if (!excludeUserId || client.userId !== String(excludeUserId)) {
+          client.send(message);
+          sentCount++;
+        }
+      }
+    });
+
+    console.log(`💬 ${conversationId} için ${sentCount} client'a mesaj gönderildi`);
+    return sentCount;
   }
 
   broadcastToMarket(marketId, data) {

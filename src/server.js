@@ -21,6 +21,7 @@ const fixOrderPriceNullable = require('../migrations/fix-order-price-nullable');
 const addContractCodeToMarkets = require('../migrations/add-contract-code-to-markets');
 const addUserBanFields = require('../migrations/add-user-ban-fields');
 const addRefreshTokens = require('../migrations/add-refresh-tokens');
+const addMessaging = require('../migrations/add-messaging');
 
 console.log('📦 Route modülleri yükleniyor...');
 // routes import...
@@ -37,6 +38,7 @@ const tradeRoutes = require('./routes/trade.route');
 const optionRoutes = require('./routes/option.route');
 const walletRoutes = require('./routes/wallet.route');
 const contractRoutes = require('./routes/contract.route');
+const messageRoutes = require('./routes/message.route');
 const marketService = require('./services/market.service');
 const schedulerService = require('./services/scheduler.service');
 console.log('✅ Route modülleri yüklendi');
@@ -117,6 +119,7 @@ app.get('/', (req, res) => {
       wallet: '/api/v1/wallet',
       admin: '/api/v1/admin',
       contracts: '/api/v1/contracts',
+      messages: '/api/v1/messages',
       websocket: 'wss://api.kahinmarket.com/ws'
     }
   });
@@ -148,6 +151,8 @@ app.use('/api/v1/admin', adminRoutes);
 console.log('  ✓ /api/v1/admin');
 app.use('/api/v1/contracts', contractRoutes);
 console.log('  ✓ /api/v1/contracts');
+app.use('/api/v1/messages', messageRoutes);
+console.log('  ✓ /api/v1/messages');
 
 // Dev route (sadece production dışında)
 if (process.env.NODE_ENV !== 'production') {
@@ -299,6 +304,15 @@ async function startServer() {
       console.log('🔄 Refresh Tokens Migration kontrol ediliyor...');
       await addRefreshTokens.up(db.sequelize);
       console.log('✅ Refresh Tokens Migration tamamlandı!');
+    } catch (error) {
+      console.error('⚠️ Migration hatası:', error.message);
+    }
+
+    // 12. Add Messaging Tables Migration
+    try {
+      console.log('🔄 Messaging Migration kontrol ediliyor...');
+      await addMessaging.up(db.sequelize);
+      console.log('✅ Messaging Migration tamamlandı!');
     } catch (error) {
       console.error('⚠️ Migration hatası:', error.message);
     }

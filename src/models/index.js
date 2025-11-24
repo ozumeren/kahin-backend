@@ -15,6 +15,9 @@ const ContractResolutionEvidence = require('./contractResolutionEvidence.model')
 const ContractAmendment = require('./contractAmendment.model');
 const PriceHistory = require('./priceHistory.model');
 const RefreshToken = require('./refreshToken.model');
+const Conversation = require('./conversation.model');
+const ConversationParticipant = require('./conversationParticipant.model');
+const Message = require('./message.model');
 
 // User <-> Share
 User.hasMany(Share, { foreignKey: 'userId' });
@@ -220,6 +223,76 @@ RefreshToken.belongsTo(User, {
   foreignKey: 'user_id'
 });
 
+// ===== Messaging İlişkileri =====
+
+// User <-> Conversation (creator)
+User.hasMany(Conversation, {
+  as: 'createdConversations',
+  foreignKey: 'created_by'
+});
+Conversation.belongsTo(User, {
+  as: 'creator',
+  foreignKey: 'created_by'
+});
+
+// Conversation <-> ConversationParticipant
+Conversation.hasMany(ConversationParticipant, {
+  as: 'participants',
+  foreignKey: 'conversation_id'
+});
+Conversation.hasMany(ConversationParticipant, {
+  as: 'allParticipants',
+  foreignKey: 'conversation_id'
+});
+ConversationParticipant.belongsTo(Conversation, {
+  as: 'conversation',
+  foreignKey: 'conversation_id'
+});
+
+// User <-> ConversationParticipant
+User.hasMany(ConversationParticipant, {
+  as: 'conversationParticipants',
+  foreignKey: 'user_id'
+});
+ConversationParticipant.belongsTo(User, {
+  as: 'user',
+  foreignKey: 'user_id'
+});
+
+// Conversation <-> Message
+Conversation.hasMany(Message, {
+  as: 'messages',
+  foreignKey: 'conversation_id'
+});
+Conversation.hasMany(Message, {
+  as: 'lastMessage',
+  foreignKey: 'conversation_id'
+});
+Message.belongsTo(Conversation, {
+  as: 'conversation',
+  foreignKey: 'conversation_id'
+});
+
+// User <-> Message (sender)
+User.hasMany(Message, {
+  as: 'sentMessages',
+  foreignKey: 'sender_id'
+});
+Message.belongsTo(User, {
+  as: 'sender',
+  foreignKey: 'sender_id'
+});
+
+// Message <-> Message (reply)
+Message.hasMany(Message, {
+  as: 'replies',
+  foreignKey: 'reply_to_id'
+});
+Message.belongsTo(Message, {
+  as: 'replyTo',
+  foreignKey: 'reply_to_id'
+});
+
 const db = {
   sequelize,
   Sequelize,
@@ -237,7 +310,11 @@ const db = {
   ContractResolutionEvidence,
   ContractAmendment,
   PriceHistory,
-  RefreshToken
+  RefreshToken,
+  // Messaging modelleri
+  Conversation,
+  ConversationParticipant,
+  Message
 };
 
 
