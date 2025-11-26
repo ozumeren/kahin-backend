@@ -19,6 +19,8 @@ const Conversation = require('./conversation.model');
 const ConversationParticipant = require('./conversationParticipant.model');
 const Message = require('./message.model');
 const Notification = require('./notification.model');
+const ResolutionHistory = require('./resolutionHistory.model');
+const Dispute = require('./dispute.model');
 
 // User <-> Share
 User.hasMany(Share, { foreignKey: 'userId' });
@@ -306,6 +308,60 @@ Notification.belongsTo(User, {
   foreignKey: 'user_id'
 });
 
+// ===== ResolutionHistory İlişkileri =====
+
+// Market <-> ResolutionHistory
+Market.hasMany(ResolutionHistory, {
+  as: 'resolutionHistory',
+  foreignKey: 'marketId'
+});
+ResolutionHistory.belongsTo(Market, {
+  as: 'market',
+  foreignKey: 'marketId'
+});
+
+// User <-> ResolutionHistory (resolver)
+User.hasMany(ResolutionHistory, {
+  as: 'resolvedMarkets',
+  foreignKey: 'resolved_by'
+});
+ResolutionHistory.belongsTo(User, {
+  as: 'resolver',
+  foreignKey: 'resolved_by'
+});
+
+// ===== Dispute İlişkileri =====
+
+// Market <-> Dispute
+Market.hasMany(Dispute, {
+  as: 'disputes',
+  foreignKey: 'marketId'
+});
+Dispute.belongsTo(Market, {
+  as: 'market',
+  foreignKey: 'marketId'
+});
+
+// User <-> Dispute (disputer)
+User.hasMany(Dispute, {
+  as: 'disputes',
+  foreignKey: 'userId'
+});
+Dispute.belongsTo(User, {
+  as: 'user',
+  foreignKey: 'userId'
+});
+
+// User <-> Dispute (reviewer)
+User.hasMany(Dispute, {
+  as: 'reviewedDisputes',
+  foreignKey: 'reviewed_by'
+});
+Dispute.belongsTo(User, {
+  as: 'reviewer',
+  foreignKey: 'reviewed_by'
+});
+
 const db = {
   sequelize,
   Sequelize,
@@ -329,7 +385,10 @@ const db = {
   ConversationParticipant,
   Message,
   // Notification modeli
-  Notification
+  Notification,
+  // Resolution & Dispute modelleri
+  ResolutionHistory,
+  Dispute
 };
 
 

@@ -5,6 +5,7 @@ const shareService = require('../services/share.service');
 const adminService = require('../services/admin.service');
 const marketHealthService = require('../services/marketHealth.service');
 const resolutionService = require('../services/resolution.service');
+const disputeService = require('../services/dispute.service');
 const { generateUniqueContractCode } = require('../utils/contract-code.util');
 const db = require('../models');
 const { Market, MarketOption, User } = db;
@@ -955,6 +956,242 @@ class AdminController {
       res.status(500).json({
         success: false,
         message: 'Zamanlanmış çözümler alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  // ========== RESOLUTION HISTORY ==========
+
+  async getMarketResolutionHistory(req, res) {
+    try {
+      const { id } = req.params;
+      const history = await resolutionService.getMarketResolutionHistory(id);
+
+      res.status(200).json({
+        success: true,
+        count: history.length,
+        data: history
+      });
+    } catch (error) {
+      console.error('Get market resolution history hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Çözüm geçmişi alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getAllResolutionHistory(req, res) {
+    try {
+      const { page, limit, type, resolvedBy } = req.query;
+
+      const result = await resolutionService.getAllResolutionHistory({
+        page,
+        limit,
+        type,
+        resolvedBy
+      });
+
+      res.status(200).json({
+        success: true,
+        ...result
+      });
+    } catch (error) {
+      console.error('Get all resolution history hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Çözüm geçmişi alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  // ========== DISPUTE MANAGEMENT ==========
+
+  async createDispute(req, res) {
+    try {
+      const {
+        marketId,
+        userId,
+        disputeType,
+        disputeReason,
+        disputeEvidence
+      } = req.body;
+
+      const dispute = await disputeService.createDispute({
+        marketId,
+        userId,
+        disputeType,
+        disputeReason,
+        disputeEvidence
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'İtiraz başarıyla oluşturuldu',
+        data: dispute
+      });
+    } catch (error) {
+      console.error('Create dispute hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async getAllDisputes(req, res) {
+    try {
+      const { page, limit, status, priority, disputeType, marketId } = req.query;
+
+      const result = await disputeService.getAllDisputes({
+        page,
+        limit,
+        status,
+        priority,
+        disputeType,
+        marketId
+      });
+
+      res.status(200).json({
+        success: true,
+        ...result
+      });
+    } catch (error) {
+      console.error('Get all disputes hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'İtirazlar alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getDisputeById(req, res) {
+    try {
+      const { id } = req.params;
+      const dispute = await disputeService.getDisputeById(id);
+
+      res.status(200).json({
+        success: true,
+        data: dispute
+      });
+    } catch (error) {
+      console.error('Get dispute hatası:', error);
+      res.status(404).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async getMarketDisputes(req, res) {
+    try {
+      const { id } = req.params;
+      const disputes = await disputeService.getMarketDisputes(id);
+
+      res.status(200).json({
+        success: true,
+        count: disputes.length,
+        data: disputes
+      });
+    } catch (error) {
+      console.error('Get market disputes hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Market itirazları alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async updateDisputeStatus(req, res) {
+    try {
+      const { id } = req.params;
+      const {
+        status,
+        reviewNotes,
+        resolutionAction,
+        resolutionNotes
+      } = req.body;
+
+      const dispute = await disputeService.updateDisputeStatus(id, {
+        status,
+        reviewedBy: req.user?.id, // From auth middleware
+        reviewNotes,
+        resolutionAction,
+        resolutionNotes
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'İtiraz durumu güncellendi',
+        data: dispute
+      });
+    } catch (error) {
+      console.error('Update dispute status hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async updateDisputePriority(req, res) {
+    try {
+      const { id } = req.params;
+      const { priority } = req.body;
+
+      const dispute = await disputeService.updateDisputePriority(id, priority);
+
+      res.status(200).json({
+        success: true,
+        message: 'İtiraz önceliği güncellendi',
+        data: dispute
+      });
+    } catch (error) {
+      console.error('Update dispute priority hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async upvoteDispute(req, res) {
+    try {
+      const { id } = req.params;
+      const dispute = await disputeService.upvoteDispute(id);
+
+      res.status(200).json({
+        success: true,
+        message: 'İtiraz oylandı',
+        data: dispute
+      });
+    } catch (error) {
+      console.error('Upvote dispute hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async getDisputeStats(req, res) {
+    try {
+      const stats = await disputeService.getDisputeStats();
+
+      res.status(200).json({
+        success: true,
+        data: stats
+      });
+    } catch (error) {
+      console.error('Get dispute stats hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'İtiraz istatistikleri alınamadı',
         error: error.message
       });
     }

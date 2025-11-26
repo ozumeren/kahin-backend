@@ -1,7 +1,7 @@
 // src/services/resolution.service.js
 const { Op } = require('sequelize');
 const db = require('../models');
-const { Market, Share, User, Transaction, Order, sequelize } = db;
+const { Market, Share, User, Transaction, Order, ResolutionHistory, sequelize } = db;
 
 class ResolutionService {
   /**
@@ -216,6 +216,22 @@ class ResolutionService {
         await this.payWinners(marketId, market.title, outcome, t);
       }
 
+      // Get impact metrics before committing
+      const allShares = await Share.findAll({
+        where: { marketId, quantity: { [Op.gt]: 0 } },
+        transaction: t
+      });
+
+      const totalHolders = allShares.length;
+      const winnersCount = outcome === null ? allShares.length : allShares.filter(s => s.outcome === outcome).length;
+      const losersCount = outcome === null ? 0 : allShares.filter(s => s.outcome !== outcome).length;
+      const totalPayout = allShares.reduce((sum, s) => {
+        if (outcome === null || s.outcome === outcome) {
+          return sum + parseFloat(s.quantity);
+        }
+        return sum;
+      }, 0);
+
       await t.commit();
 
       // Create resolution history entry
@@ -225,7 +241,12 @@ class ResolutionService {
         type: outcome === null ? 'partial' : 'normal',
         resolvedBy,
         notes,
-        evidence
+        evidence,
+        totalHolders,
+        winnersCount,
+        losersCount,
+        totalPayout,
+        openOrdersCancelled: openOrders.length
       });
 
       return {
@@ -323,10 +344,111 @@ class ResolutionService {
    * Create resolution history entry
    */
   async createResolutionHistory(data) {
-    // This will be stored in a separate table (we'll create it next)
-    // For now, just log it
-    console.log('📝 Resolution history:', data);
-    return data;
+    const {
+      marketId,
+      outcome,
+      type,
+      resolvedBy,
+      notes,
+      evidence,
+      totalHolders = 0,
+      winnersCount = 0,
+      losersCount = 0,
+      totalPayout = 0,
+      openOrdersCancelled = 0,
+      previousOutcome = null,
+      correctionReason = null
+    } = data;
+
+    try {
+      const history = await ResolutionHistory.create({
+        marketId,
+        outcome,
+        resolution_type: type,
+        resolved_by: resolvedBy,
+        resolution_notes: notes,
+        resolution_evidence: evidence,
+        total_holders: totalHolders,
+        winners_count: winnersCount,
+        losers_count: losersCount,
+        total_payout: totalPayout,
+        open_orders_cancelled: openOrdersCancelled,
+        previous_outcome: previousOutcome,
+        correction_reason: correctionReason,
+        resolved_at: new Date()
+      });
+
+      console.log('📝 Resolution history saved:', history.id);
+      return history;
+    } catch (error) {
+      console.error('Error creating resolution history:', error);
+      // Don't throw - this is non-critical
+      return null;
+    }
+  }
+
+  /**
+   * Get resolution history for a market
+   */
+  async getMarketResolutionHistory(marketId) {
+    const history = await ResolutionHistory.findAll({
+      where: { marketId },
+      include: [
+        {
+          model: User,
+          as: 'resolver',
+          attributes: ['id', 'username', 'email']
+        }
+      ],
+      order: [['resolved_at', 'DESC']]
+    });
+
+    return history;
+  }
+
+  /**
+   * Get all resolution history with filters
+   */
+  async getAllResolutionHistory(options = {}) {
+    const {
+      page = 1,
+      limit = 50,
+      type = null,
+      resolvedBy = null
+    } = options;
+
+    const where = {};
+    if (type) where.resolution_type = type;
+    if (resolvedBy) where.resolved_by = resolvedBy;
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const { count, rows } = await ResolutionHistory.findAndCountAll({
+      where,
+      include: [
+        {
+          model: Market,
+          as: 'market',
+          attributes: ['id', 'title', 'status']
+        },
+        {
+          model: User,
+          as: 'resolver',
+          attributes: ['id', 'username', 'email']
+        }
+      ],
+      order: [['resolved_at', 'DESC']],
+      limit: parseInt(limit),
+      offset
+    });
+
+    return {
+      history: rows,
+      total: count,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(count / parseInt(limit))
+    };
   }
 
   /**

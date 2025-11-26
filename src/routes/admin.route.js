@@ -288,4 +288,78 @@ router.get('/markets/scheduled-resolutions',
   adminController.getScheduledResolutions
 );
 
+// ========== RESOLUTION HISTORY ==========
+
+// GET /api/v1/admin/markets/:id/resolution-history - Get resolution history for a market
+router.get('/markets/:id/resolution-history',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getMarketResolutionHistory
+);
+
+// GET /api/v1/admin/resolution-history - Get all resolution history
+router.get('/resolution-history',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getAllResolutionHistory
+);
+
+// ========== DISPUTE MANAGEMENT ==========
+
+// GET /api/v1/admin/disputes - Get all disputes with filters
+router.get('/disputes',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getAllDisputes
+);
+
+// GET /api/v1/admin/disputes/stats - Get dispute statistics
+router.get('/disputes/stats',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getDisputeStats
+);
+
+// GET /api/v1/admin/disputes/:id - Get dispute by ID
+router.get('/disputes/:id',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getDisputeById
+);
+
+// GET /api/v1/admin/markets/:id/disputes - Get disputes for a specific market
+router.get('/markets/:id/disputes',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getMarketDisputes
+);
+
+// POST /api/v1/admin/disputes - Create new dispute
+router.post('/disputes',
+  authMiddleware,
+  adminMiddleware,
+  adminController.createDispute
+);
+
+// PATCH /api/v1/admin/disputes/:id/status - Update dispute status
+router.patch('/disputes/:id/status',
+  authMiddleware,
+  adminMiddleware,
+  adminController.updateDisputeStatus
+);
+
+// PATCH /api/v1/admin/disputes/:id/priority - Update dispute priority
+router.patch('/disputes/:id/priority',
+  authMiddleware,
+  adminMiddleware,
+  adminController.updateDisputePriority
+);
+
+// POST /api/v1/admin/disputes/:id/upvote - Upvote a dispute
+router.post('/disputes/:id/upvote',
+  authMiddleware,
+  adminMiddleware,
+  adminController.upvoteDispute
+);
+
 module.exports = router;
