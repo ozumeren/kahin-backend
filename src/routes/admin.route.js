@@ -214,4 +214,41 @@ router.delete('/orders/:id',
   adminController.cancelOrderAdmin
 );
 
+// ========== MARKET HEALTH & LIQUIDITY ==========
+
+// GET /api/v1/admin/markets/:id/health - Get market health metrics
+router.get('/markets/:id/health',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getMarketHealth
+);
+
+// GET /api/v1/admin/markets/low-liquidity - Get markets with low liquidity
+router.get('/markets/low-liquidity',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getLowLiquidityMarkets
+);
+
+// POST /api/v1/admin/markets/:id/pause - Pause market trading
+router.post('/markets/:id/pause',
+  authMiddleware,
+  adminMiddleware,
+  adminController.pauseMarket
+);
+
+// POST /api/v1/admin/markets/:id/resume - Resume market trading
+router.post('/markets/:id/resume',
+  authMiddleware,
+  adminMiddleware,
+  adminController.resumeMarket
+);
+
+// GET /api/v1/admin/markets/auto-close-candidates - Get markets eligible for auto-close
+router.get('/markets/auto-close-candidates',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getMarketsForAutoClose
+);
+
 module.exports = router;

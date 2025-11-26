@@ -69,6 +69,23 @@ const Market = sequelize.define('Market', {
     type: DataTypes.STRING(50),
     allowNull: true,
     unique: true
+  },
+  // Market health & pause fields
+  is_paused: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  paused_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  paused_by: {
+    type: DataTypes.UUID,
+    allowNull: true
+  },
+  pause_reason: {
+    type: DataTypes.TEXT,
+    allowNull: true
   }
 }, {
   tableName: 'markets',

@@ -3,6 +3,7 @@ const marketService = require('../services/market.service');
 const userService = require('../services/user.service');
 const shareService = require('../services/share.service');
 const adminService = require('../services/admin.service');
+const marketHealthService = require('../services/marketHealth.service');
 const { generateUniqueContractCode } = require('../utils/contract-code.util');
 const db = require('../models');
 const { Market, MarketOption, User } = db;
@@ -734,6 +735,110 @@ class AdminController {
       res.status(400).json({
         success: false,
         message: error.message
+      });
+    }
+  }
+
+  // ========== MARKET HEALTH MANAGEMENT ==========
+
+  async getMarketHealth(req, res) {
+    try {
+      const { id } = req.params;
+      const health = await marketHealthService.getMarketHealth(id);
+      res.status(200).json({
+        success: true,
+        data: health
+      });
+    } catch (error) {
+      console.error('Market health hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Market health verileri alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getLowLiquidityMarkets(req, res) {
+    try {
+      const { minDepth, maxSpread, minVolume24h, maxTimeSinceLastTrade, limit } = req.query;
+
+      const options = {};
+      if (minDepth) options.minDepth = parseInt(minDepth);
+      if (maxSpread) options.maxSpread = parseInt(maxSpread);
+      if (minVolume24h) options.minVolume24h = parseInt(minVolume24h);
+      if (maxTimeSinceLastTrade) options.maxTimeSinceLastTrade = parseInt(maxTimeSinceLastTrade);
+      if (limit) options.limit = parseInt(limit);
+
+      const result = await marketHealthService.getLowLiquidityMarkets(options);
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      console.error('Low liquidity markets hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Düşük likidite verileri alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async pauseMarket(req, res) {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const adminId = req.user.id;
+
+      const result = await marketHealthService.pauseMarket(id, reason, adminId);
+      res.status(200).json({
+        success: true,
+        message: result.message,
+        data: result.market,
+        cancelledOrders: result.cancelledOrders
+      });
+    } catch (error) {
+      console.error('Pause market hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async resumeMarket(req, res) {
+    try {
+      const { id } = req.params;
+      const result = await marketHealthService.resumeMarket(id);
+      res.status(200).json({
+        success: true,
+        message: result.message,
+        data: result.market
+      });
+    } catch (error) {
+      console.error('Resume market hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async getMarketsForAutoClose(req, res) {
+    try {
+      const { inactiveDays = 7 } = req.query;
+      const result = await marketHealthService.getMarketsForAutoClose(parseInt(inactiveDays));
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      console.error('Markets for auto-close hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Auto-close verileri alınamadı',
+        error: error.message
       });
     }
   }
