@@ -86,6 +86,36 @@ const Market = sequelize.define('Market', {
   pause_reason: {
     type: DataTypes.TEXT,
     allowNull: true
+  },
+  // Enhanced resolution fields
+  resolved_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  resolved_by: {
+    type: DataTypes.UUID,
+    allowNull: true
+  },
+  resolution_notes: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  resolution_evidence: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  // Scheduled resolution fields
+  scheduled_resolution_at: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  scheduled_resolution_outcome: {
+    type: DataTypes.BOOLEAN,
+    allowNull: true
+  },
+  scheduled_resolution_notes: {
+    type: DataTypes.TEXT,
+    allowNull: true
   }
 }, {
   tableName: 'markets',

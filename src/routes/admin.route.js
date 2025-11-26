@@ -258,4 +258,34 @@ router.get('/markets/paused',
   adminController.getPausedMarkets
 );
 
+// ========== ENHANCED RESOLUTION ==========
+
+// GET /api/v1/admin/markets/:id/resolution-preview - Preview resolution impact
+router.get('/markets/:id/resolution-preview',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getResolutionPreview
+);
+
+// POST /api/v1/admin/markets/:id/resolve-enhanced - Resolve with evidence and notes
+router.post('/markets/:id/resolve-enhanced',
+  authMiddleware,
+  adminMiddleware,
+  adminController.resolveMarketEnhanced
+);
+
+// POST /api/v1/admin/markets/:id/schedule-resolution - Schedule automatic resolution
+router.post('/markets/:id/schedule-resolution',
+  authMiddleware,
+  adminMiddleware,
+  adminController.scheduleResolution
+);
+
+// GET /api/v1/admin/markets/scheduled-resolutions - Get markets with scheduled resolutions
+router.get('/markets/scheduled-resolutions',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getScheduledResolutions
+);
+
 module.exports = router;

@@ -4,6 +4,7 @@ const userService = require('../services/user.service');
 const shareService = require('../services/share.service');
 const adminService = require('../services/admin.service');
 const marketHealthService = require('../services/marketHealth.service');
+const resolutionService = require('../services/resolution.service');
 const { generateUniqueContractCode } = require('../utils/contract-code.util');
 const db = require('../models');
 const { Market, MarketOption, User } = db;
@@ -855,6 +856,105 @@ class AdminController {
       res.status(500).json({
         success: false,
         message: 'Durdurulmuş marketler alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  // ========== ENHANCED RESOLUTION ==========
+
+  async getResolutionPreview(req, res) {
+    try {
+      const { id } = req.params;
+      const { outcome } = req.query;
+
+      // Convert outcome string to proper type
+      let parsedOutcome;
+      if (outcome === 'true') parsedOutcome = true;
+      else if (outcome === 'false') parsedOutcome = false;
+      else if (outcome === 'null') parsedOutcome = null;
+      else parsedOutcome = JSON.parse(outcome);
+
+      const preview = await resolutionService.previewResolution(id, parsedOutcome);
+      res.status(200).json({
+        success: true,
+        data: preview
+      });
+    } catch (error) {
+      console.error('Resolution preview hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async resolveMarketEnhanced(req, res) {
+    try {
+      const { id } = req.params;
+      const { outcome, evidence, notes } = req.body;
+      const adminId = req.user.id;
+
+      const result = await resolutionService.resolveMarket(id, {
+        outcome,
+        evidence,
+        notes,
+        resolvedBy: adminId
+      });
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+        data: result.market
+      });
+    } catch (error) {
+      console.error('Enhanced resolution hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async scheduleResolution(req, res) {
+    try {
+      const { id } = req.params;
+      const { resolveAt, outcome, notes } = req.body;
+
+      const result = await resolutionService.scheduleResolution(id, {
+        resolveAt,
+        outcome,
+        notes
+      });
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+        data: result.market,
+        scheduledFor: result.scheduledFor
+      });
+    } catch (error) {
+      console.error('Schedule resolution hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async getScheduledResolutions(req, res) {
+    try {
+      const markets = await resolutionService.getScheduledResolutions();
+      res.status(200).json({
+        success: true,
+        count: markets.length,
+        data: markets
+      });
+    } catch (error) {
+      console.error('Get scheduled resolutions hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Zamanlanmış çözümler alınamadı',
         error: error.message
       });
     }
