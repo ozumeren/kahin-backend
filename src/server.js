@@ -22,6 +22,7 @@ const addContractCodeToMarkets = require('../migrations/add-contract-code-to-mar
 const addUserBanFields = require('../migrations/add-user-ban-fields');
 const addRefreshTokens = require('../migrations/add-refresh-tokens');
 const addMessaging = require('../migrations/add-messaging');
+const addNotifications = require('../migrations/add-notifications');
 
 console.log('📦 Route modülleri yükleniyor...');
 // routes import...
@@ -39,6 +40,7 @@ const optionRoutes = require('./routes/option.route');
 const walletRoutes = require('./routes/wallet.route');
 const contractRoutes = require('./routes/contract.route');
 const messageRoutes = require('./routes/message.route');
+const notificationRoutes = require('./routes/notification.route');
 const marketService = require('./services/market.service');
 const schedulerService = require('./services/scheduler.service');
 console.log('✅ Route modülleri yüklendi');
@@ -120,6 +122,7 @@ app.get('/', (req, res) => {
       admin: '/api/v1/admin',
       contracts: '/api/v1/contracts',
       messages: '/api/v1/messages',
+      notifications: '/api/v1/notifications',
       websocket: 'wss://api.kahinmarket.com/ws'
     }
   });
@@ -153,6 +156,8 @@ app.use('/api/v1/contracts', contractRoutes);
 console.log('  ✓ /api/v1/contracts');
 app.use('/api/v1/messages', messageRoutes);
 console.log('  ✓ /api/v1/messages');
+app.use('/api/v1/notifications', notificationRoutes);
+console.log('  ✓ /api/v1/notifications');
 
 // Dev route (sadece production dışında)
 if (process.env.NODE_ENV !== 'production') {
@@ -313,6 +318,15 @@ async function startServer() {
       console.log('🔄 Messaging Migration kontrol ediliyor...');
       await addMessaging.up(db.sequelize);
       console.log('✅ Messaging Migration tamamlandı!');
+    } catch (error) {
+      console.error('⚠️ Migration hatası:', error.message);
+    }
+
+    // 13. Add Notifications Table Migration
+    try {
+      console.log('🔄 Notifications Migration kontrol ediliyor...');
+      await addNotifications.up(db.sequelize);
+      console.log('✅ Notifications Migration tamamlandı!');
     } catch (error) {
       console.error('⚠️ Migration hatası:', error.message);
     }

@@ -18,6 +18,7 @@ const RefreshToken = require('./refreshToken.model');
 const Conversation = require('./conversation.model');
 const ConversationParticipant = require('./conversationParticipant.model');
 const Message = require('./message.model');
+const Notification = require('./notification.model');
 
 // User <-> Share
 User.hasMany(Share, { foreignKey: 'userId' });
@@ -293,6 +294,18 @@ Message.belongsTo(Message, {
   foreignKey: 'reply_to_id'
 });
 
+// ===== Notification İlişkileri =====
+
+// User <-> Notification
+User.hasMany(Notification, {
+  as: 'notifications',
+  foreignKey: 'user_id'
+});
+Notification.belongsTo(User, {
+  as: 'user',
+  foreignKey: 'user_id'
+});
+
 const db = {
   sequelize,
   Sequelize,
@@ -314,7 +327,9 @@ const db = {
   // Messaging modelleri
   Conversation,
   ConversationParticipant,
-  Message
+  Message,
+  // Notification modeli
+  Notification
 };
 
 
