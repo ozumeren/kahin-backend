@@ -270,6 +270,38 @@ class UserService {
     return user;
   }
 
+  // Tüm kullanıcıları getir (admin için)
+  async getAllUsers(options = {}) {
+    const { page = 1, limit = 50, search = '' } = options;
+    const offset = (page - 1) * limit;
+
+    const where = {};
+
+    // Arama varsa email veya username'de ara
+    if (search && search.trim()) {
+      where[Op.or] = [
+        { email: { [Op.iLike]: `%${search}%` } },
+        { username: { [Op.iLike]: `%${search}%` } }
+      ];
+    }
+
+    const { count, rows: users } = await User.findAndCountAll({
+      where,
+      attributes: { exclude: ['password'] },
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      order: [['created_at', 'DESC']]
+    });
+
+    return {
+      users,
+      total: count,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(count / limit)
+    };
+  }
+
   // Kullanıcı ID'sine göre bul
   async findById(userId) {
     const user = await User.findByPk(userId, {
