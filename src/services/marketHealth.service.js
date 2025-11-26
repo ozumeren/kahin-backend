@@ -309,6 +309,71 @@ class MarketHealthService {
   }
 
   /**
+   * Get all paused markets
+   */
+  async getPausedMarkets() {
+    const markets = await Market.findAll({
+      where: {
+        is_paused: true,
+        status: { [Op.ne]: 'resolved' }
+      },
+      order: [['paused_at', 'DESC']],
+      limit: 50
+    });
+
+    const pausedMarketsData = [];
+
+    for (const market of markets) {
+      try {
+        // Calculate how long it's been paused
+        const pausedDuration = market.paused_at
+          ? Math.floor((new Date() - new Date(market.paused_at)) / (60 * 1000)) // minutes
+          : 0;
+
+        pausedMarketsData.push({
+          id: market.id,
+          title: market.title,
+          status: market.status,
+          isPaused: market.is_paused,
+          pausedAt: market.paused_at,
+          pausedBy: market.paused_by,
+          pauseReason: market.pause_reason,
+          pausedDuration: {
+            minutes: pausedDuration,
+            hours: Math.floor(pausedDuration / 60),
+            days: Math.floor(pausedDuration / (60 * 24)),
+            formatted: this.formatDuration(pausedDuration)
+          }
+        });
+      } catch (error) {
+        console.error(`Error processing paused market ${market.id}:`, error.message);
+      }
+    }
+
+    return {
+      count: pausedMarketsData.length,
+      markets: pausedMarketsData
+    };
+  }
+
+  /**
+   * Format duration in minutes to human readable string
+   */
+  formatDuration(minutes) {
+    const days = Math.floor(minutes / (60 * 24));
+    const hours = Math.floor((minutes % (60 * 24)) / 60);
+    const mins = minutes % 60;
+
+    if (days > 0) {
+      return `${days} gün ${hours} saat önce`;
+    } else if (hours > 0) {
+      return `${hours} saat ${mins} dakika önce`;
+    } else {
+      return `${mins} dakika önce`;
+    }
+  }
+
+  /**
    * Calculate overall health status
    */
   calculateHealthStatus(metrics) {

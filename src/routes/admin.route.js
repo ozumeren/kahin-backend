@@ -251,4 +251,11 @@ router.get('/markets/auto-close-candidates',
   adminController.getMarketsForAutoClose
 );
 
+// GET /api/v1/admin/markets/paused - Get all paused markets
+router.get('/markets/paused',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getPausedMarkets
+);
+
 module.exports = router;

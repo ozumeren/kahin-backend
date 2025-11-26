@@ -842,6 +842,23 @@ class AdminController {
       });
     }
   }
+
+  async getPausedMarkets(req, res) {
+    try {
+      const result = await marketHealthService.getPausedMarkets();
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      console.error('Paused markets hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Durdurulmuş marketler alınamadı',
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = new AdminController();
