@@ -40,7 +40,7 @@ class DepositService {
   }
 
   /**
-   * Get all deposits with filters
+   * Get all deposits with filters (optimized)
    */
   async getAllDeposits(filters = {}) {
     const { status, userId, page = 1, limit = 50, startDate, endDate, referenceNumber } = filters;
@@ -64,24 +64,29 @@ class DepositService {
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    const { count, rows } = await Deposit.findAndCountAll({
-      where,
-      include: [
-        {
-          model: User,
-          attributes: ['id', 'username', 'email', 'balance']
-        },
-        {
-          model: User,
-          as: 'Verifier',
-          attributes: ['id', 'username', 'email'],
-          required: false
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset
-    });
+    // Optimize: Run count and data queries in parallel
+    const [count, rows] = await Promise.all([
+      Deposit.count({ where }),
+      Deposit.findAll({
+        where,
+        include: [
+          {
+            model: User,
+            attributes: ['id', 'username', 'email', 'balance']
+          },
+          {
+            model: User,
+            as: 'Verifier',
+            attributes: ['id', 'username', 'email'],
+            required: false
+          }
+        ],
+        order: [['createdAt', 'DESC']],
+        limit: parseInt(limit),
+        offset,
+        subQuery: false // Optimize join queries
+      })
+    ]);
 
     return {
       deposits: rows,

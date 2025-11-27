@@ -47,7 +47,7 @@ class WithdrawalService {
   }
 
   /**
-   * Get all withdrawals with filters
+   * Get all withdrawals with filters (optimized)
    */
   async getAllWithdrawals(filters = {}) {
     const { status, userId, page = 1, limit = 50, startDate, endDate } = filters;
@@ -68,24 +68,29 @@ class WithdrawalService {
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    const { count, rows } = await Withdrawal.findAndCountAll({
-      where,
-      include: [
-        {
-          model: User,
-          attributes: ['id', 'username', 'email', 'balance']
-        },
-        {
-          model: User,
-          as: 'Reviewer',
-          attributes: ['id', 'username', 'email'],
-          required: false
-        }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset
-    });
+    // Optimize: Run count and data queries in parallel
+    const [count, rows] = await Promise.all([
+      Withdrawal.count({ where }),
+      Withdrawal.findAll({
+        where,
+        include: [
+          {
+            model: User,
+            attributes: ['id', 'username', 'email', 'balance']
+          },
+          {
+            model: User,
+            as: 'Reviewer',
+            attributes: ['id', 'username', 'email'],
+            required: false
+          }
+        ],
+        order: [['createdAt', 'DESC']],
+        limit: parseInt(limit),
+        offset,
+        subQuery: false // Optimize join queries
+      })
+    ]);
 
     return {
       withdrawals: rows,
