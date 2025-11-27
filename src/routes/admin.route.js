@@ -452,4 +452,99 @@ router.get('/transactions/large',
   adminController.getLargeTransactions
 );
 
+// ========== WITHDRAWAL MANAGEMENT ==========
+
+// GET /api/v1/admin/withdrawals - Get all withdrawals
+router.get('/withdrawals',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getAllWithdrawals
+);
+
+// GET /api/v1/admin/withdrawals/pending-count - Get pending withdrawals count
+router.get('/withdrawals/pending-count',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getPendingWithdrawalsCount
+);
+
+// GET /api/v1/admin/withdrawals/stats - Get withdrawal statistics
+router.get('/withdrawals/stats',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getWithdrawalStats
+);
+
+// GET /api/v1/admin/withdrawals/:id - Get withdrawal by ID
+router.get('/withdrawals/:id',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getWithdrawalById
+);
+
+// POST /api/v1/admin/withdrawals/:id/approve - Approve withdrawal
+router.post('/withdrawals/:id/approve',
+  authMiddleware,
+  adminMiddleware,
+  adminController.approveWithdrawal
+);
+
+// POST /api/v1/admin/withdrawals/:id/reject - Reject withdrawal
+router.post('/withdrawals/:id/reject',
+  authMiddleware,
+  adminMiddleware,
+  adminController.rejectWithdrawal
+);
+
+// ========== DEPOSIT MANAGEMENT ==========
+
+// GET /api/v1/admin/deposits - Get all deposits
+router.get('/deposits',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getAllDeposits
+);
+
+// GET /api/v1/admin/deposits/pending-count - Get pending deposits count
+router.get('/deposits/pending-count',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getPendingDepositsCount
+);
+
+// GET /api/v1/admin/deposits/stats - Get deposit statistics
+router.get('/deposits/stats',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getDepositStats
+);
+
+// GET /api/v1/admin/deposits/:id - Get deposit by ID
+router.get('/deposits/:id',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getDepositById
+);
+
+// POST /api/v1/admin/deposits - Create deposit record
+router.post('/deposits',
+  authMiddleware,
+  adminMiddleware,
+  adminController.createDeposit
+);
+
+// POST /api/v1/admin/deposits/:id/verify - Verify deposit
+router.post('/deposits/:id/verify',
+  authMiddleware,
+  adminMiddleware,
+  adminController.verifyDeposit
+);
+
+// POST /api/v1/admin/deposits/:id/reject - Reject deposit
+router.post('/deposits/:id/reject',
+  authMiddleware,
+  adminMiddleware,
+  adminController.rejectDeposit
+);
+
 module.exports = router;

@@ -8,6 +8,8 @@ const resolutionService = require('../services/resolution.service');
 const disputeService = require('../services/dispute.service');
 const treasuryService = require('../services/treasury.service');
 const userBalanceService = require('../services/userBalance.service');
+const withdrawalService = require('../services/withdrawal.service');
+const depositService = require('../services/deposit.service');
 const { generateUniqueContractCode } = require('../utils/contract-code.util');
 const db = require('../models');
 const { Market, MarketOption, User } = db;
@@ -1546,6 +1548,262 @@ class AdminController {
       res.status(500).json({
         success: false,
         message: 'Large transactions alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  // ========== WITHDRAWAL MANAGEMENT ==========
+
+  async getAllWithdrawals(req, res) {
+    try {
+      const result = await withdrawalService.getAllWithdrawals(req.query);
+
+      res.status(200).json({
+        success: true,
+        ...result
+      });
+    } catch (error) {
+      console.error('Get withdrawals hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Withdrawals alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getWithdrawalById(req, res) {
+    try {
+      const { id } = req.params;
+      const withdrawal = await withdrawalService.getWithdrawalById(id);
+
+      res.status(200).json({
+        success: true,
+        data: withdrawal
+      });
+    } catch (error) {
+      console.error('Get withdrawal hatası:', error);
+      res.status(404).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async approveWithdrawal(req, res) {
+    try {
+      const { id } = req.params;
+      const { notes } = req.body;
+      const reviewerId = req.user.id;
+
+      const withdrawal = await withdrawalService.approveWithdrawal(id, reviewerId, notes);
+
+      res.status(200).json({
+        success: true,
+        message: 'Withdrawal approved successfully',
+        data: withdrawal
+      });
+    } catch (error) {
+      console.error('Approve withdrawal hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async rejectWithdrawal(req, res) {
+    try {
+      const { id } = req.params;
+      const { notes } = req.body;
+      const reviewerId = req.user.id;
+
+      const withdrawal = await withdrawalService.rejectWithdrawal(id, reviewerId, notes);
+
+      res.status(200).json({
+        success: true,
+        message: 'Withdrawal rejected successfully',
+        data: withdrawal
+      });
+    } catch (error) {
+      console.error('Reject withdrawal hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async getWithdrawalStats(req, res) {
+    try {
+      const { days = 30 } = req.query;
+      const stats = await withdrawalService.getWithdrawalStats(parseInt(days));
+
+      res.status(200).json({
+        success: true,
+        data: stats
+      });
+    } catch (error) {
+      console.error('Get withdrawal stats hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Withdrawal stats alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getPendingWithdrawalsCount(req, res) {
+    try {
+      const count = await withdrawalService.getPendingCount();
+
+      res.status(200).json({
+        success: true,
+        count
+      });
+    } catch (error) {
+      console.error('Get pending withdrawals count hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Pending count alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  // ========== DEPOSIT MANAGEMENT ==========
+
+  async getAllDeposits(req, res) {
+    try {
+      const result = await depositService.getAllDeposits(req.query);
+
+      res.status(200).json({
+        success: true,
+        ...result
+      });
+    } catch (error) {
+      console.error('Get deposits hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Deposits alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getDepositById(req, res) {
+    try {
+      const { id } = req.params;
+      const deposit = await depositService.getDepositById(id);
+
+      res.status(200).json({
+        success: true,
+        data: deposit
+      });
+    } catch (error) {
+      console.error('Get deposit hatası:', error);
+      res.status(404).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async createDeposit(req, res) {
+    try {
+      const deposit = await depositService.createDepositRecord(req.body);
+
+      res.status(201).json({
+        success: true,
+        message: 'Deposit created successfully',
+        data: deposit
+      });
+    } catch (error) {
+      console.error('Create deposit hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async verifyDeposit(req, res) {
+    try {
+      const { id } = req.params;
+      const { notes } = req.body;
+      const verifierId = req.user.id;
+
+      const deposit = await depositService.verifyDeposit(id, verifierId, notes);
+
+      res.status(200).json({
+        success: true,
+        message: 'Deposit verified successfully',
+        data: deposit
+      });
+    } catch (error) {
+      console.error('Verify deposit hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async rejectDeposit(req, res) {
+    try {
+      const { id } = req.params;
+      const { notes } = req.body;
+      const verifierId = req.user.id;
+
+      const deposit = await depositService.rejectDeposit(id, verifierId, notes);
+
+      res.status(200).json({
+        success: true,
+        message: 'Deposit rejected successfully',
+        data: deposit
+      });
+    } catch (error) {
+      console.error('Reject deposit hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async getDepositStats(req, res) {
+    try {
+      const { days = 30 } = req.query;
+      const stats = await depositService.getDepositStats(parseInt(days));
+
+      res.status(200).json({
+        success: true,
+        data: stats
+      });
+    } catch (error) {
+      console.error('Get deposit stats hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Deposit stats alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getPendingDepositsCount(req, res) {
+    try {
+      const count = await depositService.getPendingCount();
+
+      res.status(200).json({
+        success: true,
+        count
+      });
+    } catch (error) {
+      console.error('Get pending deposits count hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Pending count alınamadı',
         error: error.message
       });
     }
