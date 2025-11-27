@@ -21,6 +21,8 @@ const Message = require('./message.model');
 const Notification = require('./notification.model');
 const ResolutionHistory = require('./resolutionHistory.model');
 const Dispute = require('./dispute.model');
+const Withdrawal = require('./withdrawal.model');
+const Deposit = require('./deposit.model');
 
 // User <-> Share
 User.hasMany(Share, { foreignKey: 'userId' });
@@ -362,6 +364,46 @@ Dispute.belongsTo(User, {
   foreignKey: 'reviewed_by'
 });
 
+// ===== Withdrawal İlişkileri =====
+
+// User <-> Withdrawal (requester)
+User.hasMany(Withdrawal, {
+  foreignKey: 'userId'
+});
+Withdrawal.belongsTo(User, {
+  foreignKey: 'userId'
+});
+
+// User <-> Withdrawal (reviewer)
+User.hasMany(Withdrawal, {
+  as: 'reviewedWithdrawals',
+  foreignKey: 'reviewedBy'
+});
+Withdrawal.belongsTo(User, {
+  as: 'Reviewer',
+  foreignKey: 'reviewedBy'
+});
+
+// ===== Deposit İlişkileri =====
+
+// User <-> Deposit (depositor)
+User.hasMany(Deposit, {
+  foreignKey: 'userId'
+});
+Deposit.belongsTo(User, {
+  foreignKey: 'userId'
+});
+
+// User <-> Deposit (verifier)
+User.hasMany(Deposit, {
+  as: 'verifiedDeposits',
+  foreignKey: 'verifiedBy'
+});
+Deposit.belongsTo(User, {
+  as: 'Verifier',
+  foreignKey: 'verifiedBy'
+});
+
 const db = {
   sequelize,
   Sequelize,
@@ -388,7 +430,10 @@ const db = {
   Notification,
   // Resolution & Dispute modelleri
   ResolutionHistory,
-  Dispute
+  Dispute,
+  // Withdrawals & Deposits modelleri
+  Withdrawal,
+  Deposit
 };
 
 
