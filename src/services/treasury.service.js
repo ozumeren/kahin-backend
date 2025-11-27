@@ -13,15 +13,18 @@ class TreasuryService {
       const totalUserBalances = await User.sum('balance') || 0;
 
       // Calculate locked funds (money in open orders)
-      const lockedInOrders = await Order.sum(
-        sequelize.literal('quantity * price'),
-        {
-          where: {
-            status: 'OPEN',
-            type: 'BUY'
-          }
-        }
-      ) || 0;
+      const openBuyOrders = await Order.findAll({
+        where: {
+          status: 'OPEN',
+          type: 'BUY'
+        },
+        attributes: ['quantity', 'price'],
+        raw: true
+      });
+
+      const lockedInOrders = openBuyOrders.reduce((sum, order) => {
+        return sum + (parseFloat(order.quantity) * parseFloat(order.price));
+      }, 0);
 
       // Calculate locked funds in positions (shares * current value)
       const lockedInPositions = await Share.sum('quantity', {
