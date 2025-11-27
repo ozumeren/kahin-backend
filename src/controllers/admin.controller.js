@@ -1457,12 +1457,10 @@ class AdminController {
         include: [
           {
             model: User,
-            as: 'user',
             attributes: ['id', 'username', 'email']
           },
           {
             model: Market,
-            as: 'market',
             attributes: ['id', 'title'],
             required: false
           }
@@ -1477,10 +1475,10 @@ class AdminController {
         transactions: rows.map(t => ({
           id: t.id,
           userId: t.userId,
-          username: t.user?.username,
-          email: t.user?.email,
+          username: t.User?.username,
+          email: t.User?.email,
           marketId: t.marketId,
-          marketTitle: t.market?.title,
+          marketTitle: t.Market?.title,
           type: t.type,
           amount: parseFloat(t.amount).toFixed(2),
           description: t.description,
@@ -1506,7 +1504,7 @@ class AdminController {
     try {
       const { threshold = 10000, limit = 50 } = req.query;
 
-      const { Transaction, User } = db;
+      const { Transaction, User, Market } = db;
       const transactions = await Transaction.findAll({
         where: {
           amount: { [db.sequelize.Sequelize.Op.gte]: parseFloat(threshold) }
@@ -1514,8 +1512,12 @@ class AdminController {
         include: [
           {
             model: User,
-            as: 'user',
             attributes: ['id', 'username', 'email']
+          },
+          {
+            model: Market,
+            attributes: ['id', 'title'],
+            required: false
           }
         ],
         order: [['amount', 'DESC']],
@@ -1529,7 +1531,10 @@ class AdminController {
         transactions: transactions.map(t => ({
           id: t.id,
           userId: t.userId,
-          username: t.user?.username,
+          username: t.User?.username,
+          email: t.User?.email,
+          marketId: t.marketId,
+          marketTitle: t.Market?.title,
           type: t.type,
           amount: parseFloat(t.amount).toFixed(2),
           description: t.description,
