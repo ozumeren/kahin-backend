@@ -6,6 +6,8 @@ const adminService = require('../services/admin.service');
 const marketHealthService = require('../services/marketHealth.service');
 const resolutionService = require('../services/resolution.service');
 const disputeService = require('../services/dispute.service');
+const treasuryService = require('../services/treasury.service');
+const userBalanceService = require('../services/userBalance.service');
 const { generateUniqueContractCode } = require('../utils/contract-code.util');
 const db = require('../models');
 const { Market, MarketOption, User } = db;
@@ -1192,6 +1194,353 @@ class AdminController {
       res.status(500).json({
         success: false,
         message: 'İtiraz istatistikleri alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  // ========== TREASURY & FINANCIAL CONTROLS ==========
+
+  async getTreasuryOverview(req, res) {
+    try {
+      const overview = await treasuryService.getTreasuryOverview();
+
+      res.status(200).json({
+        success: true,
+        data: overview
+      });
+    } catch (error) {
+      console.error('Get treasury overview hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Treasury overview alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getLiquidityStatus(req, res) {
+    try {
+      const status = await treasuryService.getLiquidityStatus();
+
+      res.status(200).json({
+        success: true,
+        data: status
+      });
+    } catch (error) {
+      console.error('Get liquidity status hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Liquidity status alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getNegativeBalances(req, res) {
+    try {
+      const users = await treasuryService.getNegativeBalances();
+
+      res.status(200).json({
+        success: true,
+        count: users.length,
+        data: users
+      });
+    } catch (error) {
+      console.error('Get negative balances hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Negative balances alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getTopBalanceHolders(req, res) {
+    try {
+      const { limit = 10 } = req.query;
+      const users = await treasuryService.getTopBalanceHolders(limit);
+
+      res.status(200).json({
+        success: true,
+        count: users.length,
+        data: users
+      });
+    } catch (error) {
+      console.error('Get top balance holders hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Top balance holders alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async runReconciliation(req, res) {
+    try {
+      const result = await treasuryService.runReconciliation();
+
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      console.error('Reconciliation hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Reconciliation çalıştırılamadı',
+        error: error.message
+      });
+    }
+  }
+
+  // ========== USER BALANCE MANAGEMENT ==========
+
+  async adjustUserBalance(req, res) {
+    try {
+      const { id } = req.params;
+      const { amount, reason, type } = req.body;
+
+      if (!amount || !reason) {
+        return res.status(400).json({
+          success: false,
+          message: 'Amount ve reason gerekli'
+        });
+      }
+
+      const result = await userBalanceService.adjustBalance(id, {
+        amount: parseFloat(amount),
+        reason,
+        type,
+        adjustedBy: req.user?.id // From auth middleware
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('Adjust balance hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async freezeUserBalance(req, res) {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+
+      if (!reason) {
+        return res.status(400).json({
+          success: false,
+          message: 'Freeze reason gerekli'
+        });
+      }
+
+      const result = await userBalanceService.freezeBalance(id, {
+        reason,
+        frozenBy: req.user?.id
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('Freeze balance hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async unfreezeUserBalance(req, res) {
+    try {
+      const { id } = req.params;
+
+      const result = await userBalanceService.unfreezeBalance(id, {
+        unfrozenBy: req.user?.id
+      });
+
+      res.status(200).json(result);
+    } catch (error) {
+      console.error('Unfreeze balance hatası:', error);
+      res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async getUserBalanceHistory(req, res) {
+    try {
+      const { id } = req.params;
+      const { page, limit } = req.query;
+
+      const history = await userBalanceService.getBalanceHistory(id, {
+        page,
+        limit
+      });
+
+      res.status(200).json({
+        success: true,
+        ...history
+      });
+    } catch (error) {
+      console.error('Get balance history hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Balance history alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getBalanceAdjustmentHistory(req, res) {
+    try {
+      const { page, limit, userId } = req.query;
+
+      const history = await userBalanceService.getAdjustmentHistory({
+        page,
+        limit,
+        userId
+      });
+
+      res.status(200).json({
+        success: true,
+        ...history
+      });
+    } catch (error) {
+      console.error('Get adjustment history hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Adjustment history alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  // ========== TRANSACTION MONITORING ==========
+
+  async getAllTransactions(req, res) {
+    try {
+      const { page = 1, limit = 50, type, userId, minAmount, maxAmount, startDate, endDate } = req.query;
+
+      const where = {};
+
+      if (type) where.type = type;
+      if (userId) where.userId = userId;
+      if (minAmount) {
+        where.amount = { [db.sequelize.Sequelize.Op.gte]: parseFloat(minAmount) };
+      }
+      if (maxAmount) {
+        if (where.amount) {
+          where.amount[db.sequelize.Sequelize.Op.lte] = parseFloat(maxAmount);
+        } else {
+          where.amount = { [db.sequelize.Sequelize.Op.lte]: parseFloat(maxAmount) };
+        }
+      }
+      if (startDate) {
+        where.createdAt = { [db.sequelize.Sequelize.Op.gte]: new Date(startDate) };
+      }
+      if (endDate) {
+        if (where.createdAt) {
+          where.createdAt[db.sequelize.Sequelize.Op.lte] = new Date(endDate);
+        } else {
+          where.createdAt = { [db.sequelize.Sequelize.Op.lte]: new Date(endDate) };
+        }
+      }
+
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+
+      const { Transaction, User, Market } = db;
+      const { count, rows } = await Transaction.findAndCountAll({
+        where,
+        include: [
+          {
+            model: User,
+            as: 'user',
+            attributes: ['id', 'username', 'email']
+          },
+          {
+            model: Market,
+            as: 'market',
+            attributes: ['id', 'title'],
+            required: false
+          }
+        ],
+        order: [['createdAt', 'DESC']],
+        limit: parseInt(limit),
+        offset
+      });
+
+      res.status(200).json({
+        success: true,
+        transactions: rows.map(t => ({
+          id: t.id,
+          userId: t.userId,
+          username: t.user?.username,
+          email: t.user?.email,
+          marketId: t.marketId,
+          marketTitle: t.market?.title,
+          type: t.type,
+          amount: parseFloat(t.amount).toFixed(2),
+          description: t.description,
+          metadata: t.metadata,
+          createdAt: t.createdAt
+        })),
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(count / parseInt(limit))
+      });
+    } catch (error) {
+      console.error('Get transactions hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Transactions alınamadı',
+        error: error.message
+      });
+    }
+  }
+
+  async getLargeTransactions(req, res) {
+    try {
+      const { threshold = 10000, limit = 50 } = req.query;
+
+      const { Transaction, User } = db;
+      const transactions = await Transaction.findAll({
+        where: {
+          amount: { [db.sequelize.Sequelize.Op.gte]: parseFloat(threshold) }
+        },
+        include: [
+          {
+            model: User,
+            as: 'user',
+            attributes: ['id', 'username', 'email']
+          }
+        ],
+        order: [['amount', 'DESC']],
+        limit: parseInt(limit)
+      });
+
+      res.status(200).json({
+        success: true,
+        count: transactions.length,
+        threshold: parseFloat(threshold),
+        transactions: transactions.map(t => ({
+          id: t.id,
+          userId: t.userId,
+          username: t.user?.username,
+          type: t.type,
+          amount: parseFloat(t.amount).toFixed(2),
+          description: t.description,
+          createdAt: t.createdAt
+        }))
+      });
+    } catch (error) {
+      console.error('Get large transactions hatası:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Large transactions alınamadı',
         error: error.message
       });
     }

@@ -362,4 +362,94 @@ router.post('/disputes/:id/upvote',
   adminController.upvoteDispute
 );
 
+// ========== TREASURY & FINANCIAL CONTROLS ==========
+
+// GET /api/v1/admin/treasury/overview - Get treasury overview
+router.get('/treasury/overview',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getTreasuryOverview
+);
+
+// GET /api/v1/admin/treasury/liquidity - Get liquidity status
+router.get('/treasury/liquidity',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getLiquidityStatus
+);
+
+// GET /api/v1/admin/treasury/negative-balances - Get users with negative balance
+router.get('/treasury/negative-balances',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getNegativeBalances
+);
+
+// GET /api/v1/admin/treasury/top-holders - Get top balance holders
+router.get('/treasury/top-holders',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getTopBalanceHolders
+);
+
+// POST /api/v1/admin/treasury/reconciliation - Run reconciliation check
+router.post('/treasury/reconciliation',
+  authMiddleware,
+  adminMiddleware,
+  adminController.runReconciliation
+);
+
+// ========== USER BALANCE MANAGEMENT ==========
+
+// POST /api/v1/admin/users/:id/balance/adjust - Adjust user balance
+router.post('/users/:id/balance/adjust',
+  authMiddleware,
+  adminMiddleware,
+  adminController.adjustUserBalance
+);
+
+// POST /api/v1/admin/users/:id/balance/freeze - Freeze user balance
+router.post('/users/:id/balance/freeze',
+  authMiddleware,
+  adminMiddleware,
+  adminController.freezeUserBalance
+);
+
+// POST /api/v1/admin/users/:id/balance/unfreeze - Unfreeze user balance
+router.post('/users/:id/balance/unfreeze',
+  authMiddleware,
+  adminMiddleware,
+  adminController.unfreezeUserBalance
+);
+
+// GET /api/v1/admin/users/:id/balance/history - Get user balance history
+router.get('/users/:id/balance/history',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getUserBalanceHistory
+);
+
+// GET /api/v1/admin/balance-adjustments - Get all balance adjustments
+router.get('/balance-adjustments',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getBalanceAdjustmentHistory
+);
+
+// ========== TRANSACTION MONITORING ==========
+
+// GET /api/v1/admin/transactions - Get all transactions
+router.get('/transactions',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getAllTransactions
+);
+
+// GET /api/v1/admin/transactions/large - Get large transactions
+router.get('/transactions/large',
+  authMiddleware,
+  adminMiddleware,
+  adminController.getLargeTransactions
+);
+
 module.exports = router;
